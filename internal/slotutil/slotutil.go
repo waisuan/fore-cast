@@ -6,7 +6,7 @@ import (
 	"strings"
 	"time"
 
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 )
 
 // Default cutoff: do not book any slot at or after this time.
@@ -16,13 +16,13 @@ const DefaultCutoffTeeTime = "1899-12-30T08:15:00"
 func CourseForDate(txnDate string) string {
 	t, err := time.Parse("2006/01/02", txnDate)
 	if err != nil {
-		return saujana.CoursePLC
+		return booker.CoursePLC
 	}
 	switch t.Weekday() {
 	case time.Sunday, time.Monday, time.Tuesday:
-		return saujana.CourseBRC
+		return booker.CourseBRC
 	default:
-		return saujana.CoursePLC
+		return booker.CoursePLC
 	}
 }
 
@@ -43,8 +43,8 @@ func ParseCutoff(s string) (string, error) {
 }
 
 // SlotsBeforeCutoff returns slots with TeeTime before cutoff, sorted earliest first.
-func SlotsBeforeCutoff(slots []saujana.TeeTimeSlot, cutoffTeeTime string) []saujana.TeeTimeSlot {
-	var out []saujana.TeeTimeSlot
+func SlotsBeforeCutoff(slots []booker.TeeTimeSlot, cutoffTeeTime string) []booker.TeeTimeSlot {
+	var out []booker.TeeTimeSlot
 	for _, s := range slots {
 		if s.TeeTime < cutoffTeeTime {
 			out = append(out, s)

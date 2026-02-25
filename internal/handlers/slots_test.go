@@ -9,22 +9,22 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 )
 
 type SlotsHandlerSuite struct {
 	suite.Suite
-	ctrl        *gomock.Controller
-	mockSaujana *saujana.MockClientInterface
-	handler     *SlotsHandler
-	user        *context.User
+	ctrl       *gomock.Controller
+	mockBooker *booker.MockClientInterface
+	handler    *SlotsHandler
+	user       *context.User
 }
 
 func (s *SlotsHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockSaujana = saujana.NewMockClientInterface(s.ctrl)
-	s.handler = &SlotsHandler{Saujana: s.mockSaujana}
-	s.user = &context.User{UserName: "u", SaujanaToken: "token"}
+	s.mockBooker = booker.NewMockClientInterface(s.ctrl)
+	s.handler = &SlotsHandler{Booker: s.mockBooker}
+	s.user = &context.User{UserName: "u", APIToken: "token"}
 }
 
 func (s *SlotsHandlerSuite) TearDownTest() {
@@ -32,10 +32,10 @@ func (s *SlotsHandlerSuite) TearDownTest() {
 }
 
 func (s *SlotsHandlerSuite) TestSlots_Success() {
-	slots := []saujana.TeeTimeSlot{
-		{CourseID: "PLC", TeeTime: "07:00", Session: "1", TeeBox: saujana.StringOrNumber("1")},
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "07:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
 	}
-	s.mockSaujana.EXPECT().
+	s.mockBooker.EXPECT().
 		GetTeeTimeSlots("token", "PLC", "2026/02/25").
 		Return(slots, nil)
 
@@ -79,7 +79,7 @@ func (s *SlotsHandlerSuite) TestSlots_InvalidDate() {
 }
 
 func (s *SlotsHandlerSuite) TestSlots_GetTeeTimeSlotsError() {
-	s.mockSaujana.EXPECT().
+	s.mockBooker.EXPECT().
 		GetTeeTimeSlots("token", "PLC", "2026/02/25").
 		Return(nil, http.ErrHandlerTimeout)
 
@@ -91,11 +91,11 @@ func (s *SlotsHandlerSuite) TestSlots_GetTeeTimeSlotsError() {
 }
 
 func (s *SlotsHandlerSuite) TestSlots_WithCutoffFilter() {
-	slots := []saujana.TeeTimeSlot{
-		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: saujana.StringOrNumber("1")},
-		{CourseID: "PLC", TeeTime: "1899-12-30T09:00:00", Session: "1", TeeBox: saujana.StringOrNumber("1")},
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T09:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
 	}
-	s.mockSaujana.EXPECT().
+	s.mockBooker.EXPECT().
 		GetTeeTimeSlots("token", "PLC", "2026/02/25").
 		Return(slots, nil)
 

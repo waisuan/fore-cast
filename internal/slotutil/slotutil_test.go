@@ -5,7 +5,7 @@ import (
 	"time"
 
 	"github.com/stretchr/testify/suite"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 )
 
 type SlotutilSuite struct {
@@ -18,15 +18,15 @@ func (s *SlotutilSuite) TestCourseForDate() {
 		want string
 		desc string
 	}{
-		{"2026/02/23", saujana.CourseBRC, "Monday -> BRC"},
-		{"2026/02/24", saujana.CourseBRC, "Tuesday -> BRC"},
-		{"2026/02/22", saujana.CourseBRC, "Sunday -> BRC"},
-		{"2026/02/25", saujana.CoursePLC, "Wednesday -> PLC"},
-		{"2026/02/26", saujana.CoursePLC, "Thursday -> PLC"},
-		{"2026/02/27", saujana.CoursePLC, "Friday -> PLC"},
-		{"2026/02/28", saujana.CoursePLC, "Saturday -> PLC"},
-		{"invalid", saujana.CoursePLC, "invalid date -> fallback PLC"},
-		{"", saujana.CoursePLC, "empty -> fallback PLC"},
+		{"2026/02/23", booker.CourseBRC, "Monday -> BRC"},
+		{"2026/02/24", booker.CourseBRC, "Tuesday -> BRC"},
+		{"2026/02/22", booker.CourseBRC, "Sunday -> BRC"},
+		{"2026/02/25", booker.CoursePLC, "Wednesday -> PLC"},
+		{"2026/02/26", booker.CoursePLC, "Thursday -> PLC"},
+		{"2026/02/27", booker.CoursePLC, "Friday -> PLC"},
+		{"2026/02/28", booker.CoursePLC, "Saturday -> PLC"},
+		{"invalid", booker.CoursePLC, "invalid date -> fallback PLC"},
+		{"", booker.CoursePLC, "empty -> fallback PLC"},
 	}
 	for _, tt := range tests {
 		s.Run(tt.desc, func() {
@@ -68,20 +68,20 @@ func (s *SlotutilSuite) TestParseCutoff() {
 
 func (s *SlotutilSuite) TestSlotsBeforeCutoff() {
 	cutoff := "1899-12-30T08:15:00"
-	mkSlot := func(teeTime string) saujana.TeeTimeSlot {
-		return saujana.TeeTimeSlot{TeeTime: teeTime, CourseID: "BRC", Session: "Morning", TeeBox: "1"}
+	mkSlot := func(teeTime string) booker.TeeTimeSlot {
+		return booker.TeeTimeSlot{TeeTime: teeTime, CourseID: "BRC", Session: "Morning", TeeBox: "1"}
 	}
 	tests := []struct {
 		name   string
-		slots  []saujana.TeeTimeSlot
+		slots  []booker.TeeTimeSlot
 		cutoff string
 		want   []string
 	}{
 		{"empty", nil, cutoff, nil},
-		{"all before", []saujana.TeeTimeSlot{mkSlot("1899-12-30T07:00:00"), mkSlot("1899-12-30T08:00:00")}, cutoff, []string{"1899-12-30T07:00:00", "1899-12-30T08:00:00"}},
-		{"all after", []saujana.TeeTimeSlot{mkSlot("1899-12-30T08:30:00"), mkSlot("1899-12-30T09:00:00")}, cutoff, nil},
-		{"mixed", []saujana.TeeTimeSlot{mkSlot("1899-12-30T09:00:00"), mkSlot("1899-12-30T07:30:00"), mkSlot("1899-12-30T08:00:00")}, cutoff, []string{"1899-12-30T07:30:00", "1899-12-30T08:00:00"}},
-		{"single before", []saujana.TeeTimeSlot{mkSlot("1899-12-30T07:37:00")}, cutoff, []string{"1899-12-30T07:37:00"}},
+		{"all before", []booker.TeeTimeSlot{mkSlot("1899-12-30T07:00:00"), mkSlot("1899-12-30T08:00:00")}, cutoff, []string{"1899-12-30T07:00:00", "1899-12-30T08:00:00"}},
+		{"all after", []booker.TeeTimeSlot{mkSlot("1899-12-30T08:30:00"), mkSlot("1899-12-30T09:00:00")}, cutoff, nil},
+		{"mixed", []booker.TeeTimeSlot{mkSlot("1899-12-30T09:00:00"), mkSlot("1899-12-30T07:30:00"), mkSlot("1899-12-30T08:00:00")}, cutoff, []string{"1899-12-30T07:30:00", "1899-12-30T08:00:00"}},
+		{"single before", []booker.TeeTimeSlot{mkSlot("1899-12-30T07:37:00")}, cutoff, []string{"1899-12-30T07:37:00"}},
 	}
 	for _, tt := range tests {
 		s.Run(tt.name, func() {

@@ -24,8 +24,8 @@ func SessionAuth(store *session.Store) func(http.Handler) http.Handler {
 				return
 			}
 			ctx := context.WithUser(r.Context(), &context.User{
-				UserName:     data.UserName,
-				SaujanaToken: data.SaujanaToken,
+				UserName: data.UserName,
+				APIToken: data.APIToken,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

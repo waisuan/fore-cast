@@ -12,23 +12,23 @@ import (
 	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 type AuthHandlerSuite struct {
 	suite.Suite
-	ctrl        *gomock.Controller
-	mockSaujana *saujana.MockClientInterface
-	store       *session.Store
-	handler     *AuthHandler
+	ctrl       *gomock.Controller
+	mockBooker *booker.MockClientInterface
+	store      *session.Store
+	handler    *AuthHandler
 }
 
 func (s *AuthHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockSaujana = saujana.NewMockClientInterface(s.ctrl)
+	s.mockBooker = booker.NewMockClientInterface(s.ctrl)
 	s.store = session.NewStore(24 * time.Hour)
-	s.handler = &AuthHandler{Saujana: s.mockSaujana, Store: s.store}
+	s.handler = &AuthHandler{Booker: s.mockBooker, Store: s.store}
 }
 
 func (s *AuthHandlerSuite) TearDownTest() {
@@ -36,7 +36,7 @@ func (s *AuthHandlerSuite) TearDownTest() {
 }
 
 func (s *AuthHandlerSuite) TestLogin_Success() {
-	s.mockSaujana.EXPECT().
+	s.mockBooker.EXPECT().
 		Login("alice", "secret").
 		Return("token123", nil)
 
@@ -89,7 +89,7 @@ func (s *AuthHandlerSuite) TestLogin_UsernameAndPasswordRequired() {
 }
 
 func (s *AuthHandlerSuite) TestLogin_LoginError() {
-	s.mockSaujana.EXPECT().
+	s.mockBooker.EXPECT().
 		Login("bad", "bad").
 		Return("", http.ErrHandlerTimeout)
 
@@ -134,7 +134,7 @@ func (s *AuthHandlerSuite) TestMe_Unauthorized() {
 func (s *AuthHandlerSuite) TestMe_Success() {
 	s.handler = &AuthHandler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
-	req = req.WithContext(context.WithUser(req.Context(), &context.User{UserName: "bob", SaujanaToken: "t"}))
+	req = req.WithContext(context.WithUser(req.Context(), &context.User{UserName: "bob", APIToken: "t"}))
 	rec := httptest.NewRecorder()
 	s.handler.Me(rec, req)
 	s.Require().Equal(http.StatusOK, rec.Code)

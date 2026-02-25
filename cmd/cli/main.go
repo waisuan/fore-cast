@@ -1,7 +1,6 @@
 package main
 
 import (
-	"encoding/json"
 	"flag"
 	"fmt"
 	"os"
@@ -9,11 +8,10 @@ import (
 	"strings"
 	"time"
 
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
-// Default interval between retries when -retry is used.
 const defaultRetryIntervalSec = 5
 
 func main() {
@@ -24,15 +22,14 @@ func main() {
 }
 
 func run() error {
-	user := flag.String("user", "", "Club member ID / username (e.g. M8816-0)")
+	user := flag.String("user", "", "Club member ID / username")
 	pass := flag.String("password", "", "Password")
 	date := flag.String("date", "", "Target date YYYY/MM/DD (default: 1 week from today)")
 	cutoff := flag.String("cutoff", "", "Only book slots before this time, e.g. 8:15 or 7:30 (default: 8:15)")
 	statusOnly := flag.Bool("status", false, "Only show current booking status (no booking)")
 	showSlots := flag.Bool("slots", false, "Show available tee time slots for the given date (no booking)")
-	testSlot := flag.String("test-slot", "", "Preferred tee time to try first each round (e.g. 1899-12-30T07:37:00); also used with -test-only to show API response only")
+	testSlot := flag.String("test-slot", "", "Target a specific tee time instead of auto-selecting (e.g. 1899-12-30T07:37:00)")
 	testTeeBox := flag.String("test-teebox", "1", "TeeBox to use with -test-slot (e.g. 1 or 10)")
-	testOnly := flag.Bool("test-only", false, "With -test-slot: only run one test booking and show API response (no retry loop)")
 	retry := flag.Bool("retry", false, "Retry loop: keep trying to book until a slot is booked or none available before cutoff (e.g. for 9:50–10 PM window)")
 	retryInterval := flag.Int("retry-interval", defaultRetryIntervalSec, "Seconds between rounds when using -retry")
 	runAt := flag.String("at", "", "Run at this time today (24h, e.g. 22:00 for 10 PM); waits then runs with all other flags")
@@ -46,25 +43,19 @@ func run() error {
 		}
 	}
 
-	userName := or(*user, os.Getenv("SAUJANA_USER"))
-	password := or(*pass, os.Getenv("SAUJANA_PASSWORD"))
-	if userName == "" || password == "" {
-		return fmt.Errorf("credentials required: set -user and -password, or SAUJANA_USER and SAUJANA_PASSWORD")
+	if *user == "" || *pass == "" {
+		return fmt.Errorf("-user and -password are required")
 	}
 
-	client := saujana.NewClient()
-	token, err := client.Login(userName, password)
+	client := booker.NewClient()
+	token, err := client.Login(*user, *pass)
 	if err != nil {
 		return fmt.Errorf("login: %w", err)
 	}
 
 	if *statusOnly {
-		printBookingStatus(client, token, userName)
+		printBookingStatus(client, token, *user)
 		return nil
-	}
-
-	if *testSlot != "" && *testOnly {
-		return runTestSlot(client, token, userName, *testSlot, *testTeeBox, *date, *debug)
 	}
 
 	txnDate := strings.TrimSpace(*date)
@@ -84,33 +75,23 @@ func run() error {
 		return printSlots(client, token, txnDate, cutoffTeeTime)
 	}
 
-	defer printBookingStatus(client, token, userName)
-	// When -retry is false, single round only (one attempt per slot then exit). When true, loop until booked or no slots.
-	// If -test-slot is set (and not -test-only), try that slot first each round before API slots.
-	return runRetryLoop(client, token, txnDate, userName, cutoffTeeTime, *retryInterval, !*retry, *debug, *testSlot, *testTeeBox)
+	defer printBookingStatus(client, token, *user)
+	return runRetryLoop(client, token, txnDate, *user, cutoffTeeTime, *retryInterval, *retry, *debug, *testSlot, *testTeeBox)
 }
 
-// tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", _) on failure.
-func tryBookSlot(client *saujana.Client, token string, slot *saujana.TeeTimeSlot, txnDate, userName string, debug bool) (booked bool, bookingID string, err error) {
+// tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", nil) on failure.
+func tryBookSlot(client *booker.Client, token string, slot *booker.TeeTimeSlot, txnDate, userName string, debug bool) (booked bool, bookingID string, err error) {
 	fmt.Printf("Attempting to book at %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	input := saujana.GolfNewBooking2Input{
-		CourseID:        slot.CourseID,
-		TxnDate:         txnDate,
-		Session:         slot.Session,
-		TeeBox:          slot.TeeBox.String(),
-		TeeTime:         slot.TeeTime,
-		AccountID:       userName,
-		TotalGuest:      4,
-		Golfer2MemberID: "",
-		Golfer3MemberID: "",
-		Golfer4MemberID: "",
-		Golfer1Caddy:    "",
-		Golfer2Caddy:    "",
-		Golfer3Caddy:    "",
-		Golfer4Caddy:    "",
-		RequireBuggy:    false,
-		IPaddress:       userName,
-		Holes:           18,
+	input := booker.GolfNewBooking2Input{
+		CourseID:   slot.CourseID,
+		TxnDate:    txnDate,
+		Session:    slot.Session,
+		TeeBox:     slot.TeeBox.String(),
+		TeeTime:    slot.TeeTime,
+		AccountID:  userName,
+		TotalGuest: 4,
+		IPaddress:  userName,
+		Holes:      18,
 	}
 	resp, err := client.BookTeeTime(token, input, debug)
 	if err != nil {
@@ -123,8 +104,8 @@ func tryBookSlot(client *saujana.Client, token string, slot *saujana.TeeTimeSlot
 }
 
 // printTeeTimeStatus calls GolfCheckTeeTimeStatus for the slot and prints the response.
-func printTeeTimeStatus(client *saujana.Client, token string, slot *saujana.TeeTimeSlot, txnDate, userName string) {
-	checkInput := saujana.GolfCheckTeeTimeStatusInput{
+func printTeeTimeStatus(client *booker.Client, token string, slot *booker.TeeTimeSlot, txnDate, userName string) {
+	checkInput := booker.GolfCheckTeeTimeStatusInput{
 		CourseID:  slot.CourseID,
 		TxnDate:   txnDate,
 		Session:   slot.Session,
@@ -132,7 +113,6 @@ func printTeeTimeStatus(client *saujana.Client, token string, slot *saujana.TeeT
 		TeeTime:   slot.TeeTime,
 		UserName:  userName,
 		IPAddress: userName,
-		Action:    0,
 	}
 	resp, err := client.CheckTeeTimeStatus(token, checkInput)
 	if err != nil {
@@ -146,55 +126,56 @@ func printTeeTimeStatus(client *saujana.Client, token string, slot *saujana.TeeT
 	fmt.Printf("  tee time status: Status=%v Reason=%s\n", resp.Status, reason)
 }
 
-// runRetryLoop fetches slots; for each slot checks tee time status then tries to book once.
-// If singleRound is true, runs one round then returns (with error if nothing booked). Otherwise loops until booked or no slots before cutoff.
-// When preferredTeeTime is non-empty, only that slot is retried until booked or the user cancels (no API slot fallback).
-func runRetryLoop(client *saujana.Client, token, txnDate, userName, cutoffTeeTime string, intervalSec int, singleRound, debug bool, preferredTeeTime, preferredTeeBox string) error {
+// runRetryLoop fetches slots and attempts to book them.
+// When retry is true, loops until a slot is booked or none remain before cutoff.
+// When preferredTeeTime is non-empty, only that slot is retried (no API slot fallback).
+func runRetryLoop(client *booker.Client, token, txnDate, userName, cutoffTeeTime string, intervalSec int, retry, debug bool, preferredTeeTime, preferredTeeBox string) error {
 	courseID := slotutil.CourseForDate(txnDate)
 	preferredTeeTime = strings.TrimSpace(preferredTeeTime)
-	preferredTeeBox = strings.TrimSpace(preferredTeeBox)
-	if preferredTeeBox == "" {
-		preferredTeeBox = "1"
-	}
-	// Preferred slot only: check status then try to book; repeat until booked or user cancels (Ctrl+C).
+
 	if preferredTeeTime != "" {
-		prefSlot := &saujana.TeeTimeSlot{
-			CourseID:   courseID,
-			CourseName: "",
-			Session:    "Morning",
-			TeeBox:     saujana.StringOrNumber(preferredTeeBox),
-			TeeTime:    preferredTeeTime,
+		prefSlot := &booker.TeeTimeSlot{
+			CourseID: courseID,
+			Session:  "Morning",
+			TeeBox:   booker.StringOrNumber(preferredTeeBox),
+			TeeTime:  preferredTeeTime,
 		}
-		round := 0
-		for {
-			round++
-			fmt.Printf("Target date: %s | Course: %s (round %d)\n", txnDate, courseID, round)
-			fmt.Printf("Preferred slot: %s Morning (TeeBox %s)\n", preferredTeeTime, preferredTeeBox)
+		for round := 1; ; round++ {
+			if !retry && round > 1 {
+				return fmt.Errorf("could not book slot %s", preferredTeeTime)
+			}
+			fmt.Printf("Target date: %s | Course: %s", txnDate, courseID)
+			if retry {
+				fmt.Printf(" (round %d)", round)
+			}
+			fmt.Println()
+			fmt.Printf("Slot: %s Morning (TeeBox %s)\n", preferredTeeTime, preferredTeeBox)
 			printTeeTimeStatus(client, token, prefSlot, txnDate, userName)
 			booked, bookingID, _ := tryBookSlot(client, token, prefSlot, txnDate, userName, debug)
 			if booked {
 				fmt.Printf("Booked successfully. BookingID: %s\n", bookingID)
 				return nil
 			}
+			if !retry {
+				continue
+			}
 			fmt.Printf("Retrying in %d seconds... (Ctrl+C to cancel)\n", intervalSec)
 			time.Sleep(time.Duration(intervalSec) * time.Second)
 		}
 	}
-	// No preferred slot: fetch API slots and try each before cutoff.
-	round := 0
-	for {
-		round++
-		if singleRound && round > 1 {
+
+	for round := 1; ; round++ {
+		if !retry && round > 1 {
 			break
 		}
 		fmt.Printf("Target date: %s | Course: %s", txnDate, courseID)
-		if !singleRound {
+		if retry {
 			fmt.Printf(" (round %d)", round)
 		}
 		fmt.Println()
 		slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
 		if err != nil {
-			if singleRound {
+			if !retry {
 				return fmt.Errorf("get tee times: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "[round %d] get tee times: %v\n", round, err)
@@ -215,18 +196,17 @@ func runRetryLoop(client *saujana.Client, token, txnDate, userName, cutoffTeeTim
 				return nil
 			}
 		}
-		if singleRound {
+		if !retry {
 			return fmt.Errorf("could not book any slot before %s (tried %d)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff))
 		}
 		fmt.Printf("No slot booked this round. Retrying in %d seconds...\n", intervalSec)
 		time.Sleep(time.Duration(intervalSec) * time.Second)
 	}
-	// Unreachable when singleRound is false (loop never exits without return).
 	return nil
 }
 
 // printSlots fetches and prints available tee time slots for the date (no booking).
-func printSlots(client *saujana.Client, token, txnDate, cutoffTeeTime string) error {
+func printSlots(client *booker.Client, token, txnDate, cutoffTeeTime string) error {
 	courseID := slotutil.CourseForDate(txnDate)
 	fmt.Printf("Available slots for %s | Course: %s\n", txnDate, courseID)
 	slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
@@ -237,13 +217,10 @@ func printSlots(client *saujana.Client, token, txnDate, cutoffTeeTime string) er
 		fmt.Println("No slots available.")
 		return nil
 	}
-	sorted := make([]saujana.TeeTimeSlot, len(slots))
-	copy(sorted, slots)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].TeeTime < sorted[j].TeeTime })
-	for _, s := range sorted {
-		beforeCutoff := s.TeeTime < cutoffTeeTime
+	sort.Slice(slots, func(i, j int) bool { return slots[i].TeeTime < slots[j].TeeTime })
+	for _, s := range slots {
 		mark := " "
-		if beforeCutoff {
+		if s.TeeTime < cutoffTeeTime {
 			mark = "*"
 		}
 		fmt.Printf("  %s %s %s (TeeBox %s) %s\n", mark, s.TeeTime, s.Session, s.TeeBox.String(), s.CourseName)
@@ -252,83 +229,8 @@ func printSlots(client *saujana.Client, token, txnDate, cutoffTeeTime string) er
 	return nil
 }
 
-// runTestSlot attempts one booking with the given TeeTime (e.g. non-existent slot) and prints the API response.
-func runTestSlot(client *saujana.Client, token, userName, teeTime, teeBox, dateFlag string, debug bool) error {
-	txnDate := strings.TrimSpace(dateFlag)
-	if txnDate == "" {
-		txnDate = slotutil.DateOneWeekAhead()
-	}
-	if err := slotutil.ValidateDate(txnDate); err != nil {
-		return err
-	}
-	courseID := slotutil.CourseForDate(txnDate)
-	teeBox = strings.TrimSpace(teeBox)
-	if teeBox == "" {
-		teeBox = "1"
-	}
-
-	input := saujana.GolfNewBooking2Input{
-		CourseID:        courseID,
-		TxnDate:         txnDate,
-		Session:         "Morning",
-		TeeBox:          teeBox,
-		TeeTime:         teeTime,
-		AccountID:       userName,
-		TotalGuest:      4,
-		Golfer2MemberID: "",
-		Golfer3MemberID: "",
-		Golfer4MemberID: "",
-		Golfer1Caddy:    "",
-		Golfer2Caddy:    "",
-		Golfer3Caddy:    "",
-		Golfer4Caddy:    "",
-		RequireBuggy:    false,
-		IPaddress:       userName,
-		Holes:           18,
-	}
-	fmt.Printf("Test booking: %s on %s @ %s (TeeBox %s, Morning)\n", courseID, txnDate, teeTime, teeBox)
-	fmt.Printf("Attempting to book at %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	resp, err := client.BookTeeTime(token, input, debug)
-	if err != nil {
-		return fmt.Errorf("request failed: %w", err)
-	}
-	out := map[string]interface{}{
-		"Status": resp.Status,
-		"Reason": resp.Reason,
-		"Result": resp.Result,
-	}
-	jsonOut, _ := json.MarshalIndent(out, "", "  ")
-	fmt.Println("Booking response:")
-	fmt.Println(string(jsonOut))
-
-	checkInput := saujana.GolfCheckTeeTimeStatusInput{
-		CourseID:  courseID,
-		TxnDate:   txnDate,
-		Session:   "Morning",
-		TeeBox:    teeBox,
-		TeeTime:   teeTime,
-		UserName:  userName,
-		IPAddress: userName,
-		Action:    0,
-	}
-	statusResp, err := client.CheckTeeTimeStatus(token, checkInput)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "Tee time status check failed: %v\n", err)
-		return nil
-	}
-	statusOut := map[string]interface{}{
-		"Status": statusResp.Status,
-		"Reason": statusResp.Reason,
-		"Result": statusResp.Result,
-	}
-	statusJSON, _ := json.MarshalIndent(statusOut, "", "  ")
-	fmt.Println("\nTee time status response:")
-	fmt.Println(string(statusJSON))
-	return nil
-}
-
 // printBookingStatus fetches and prints current booking(s) for the account.
-func printBookingStatus(client *saujana.Client, token, accountID string) {
+func printBookingStatus(client *booker.Client, token, accountID string) {
 	resp, err := client.GetBooking(token, accountID, "", "")
 	if err != nil {
 		fmt.Fprintf(os.Stderr, "Could not fetch booking status: %v\n", err)
@@ -364,12 +266,7 @@ func printBookingStatus(client *saujana.Client, token, accountID string) {
 	}
 }
 
-// waitUntil blocks until the given time today (24h, e.g. "22:00"). If the time has passed, returns immediately.
 func waitUntil(at string) error {
-	at = strings.TrimSpace(at)
-	if at == "" {
-		return nil
-	}
 	t, err := time.Parse("15:04", at)
 	if err != nil {
 		return fmt.Errorf("invalid -at %q: use 24h (e.g. 22:00)", at)
@@ -385,27 +282,12 @@ func waitUntil(at string) error {
 	return nil
 }
 
-func or(a, b string) string {
-	if a != "" {
-		return a
-	}
-	return b
-}
-
 func usage() {
 	fmt.Fprintf(os.Stderr, `Usage: %s [options]
 
-Books the earliest available tee time (before cutoff, default 8:15 AM; use -cutoff to override) at Saujana Club.
+Books the earliest available tee time (before cutoff, default 8:15 AM; use -cutoff to override).
 Target date defaults to 1 week from today. Course is chosen by day:
-  Mon/Tue/Sun → BRC (Bunga Raya), Wed–Sat → PLC.
-
-Use -status to view current booking status. Use -slots to list available tee
-times for the date (no booking). Use -test-slot <TeeTime> to attempt one
-booking and print the API response. Use -retry to loop until a slot is booked or none are available before cutoff.
-For each slot, tee time status is checked first, then one booking attempt is made.
-Use -at 22:00 to wait until that time today (24h) then run with all other flags.
-
-Credentials: -user and -password, or SAUJANA_USER and SAUJANA_PASSWORD.
+  Mon/Tue/Sun → BRC, Wed–Sat → PLC.
 
 Options:
 `, os.Args[0])

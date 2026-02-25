@@ -1,11 +1,10 @@
-package saujana
+package booker
 
 import (
 	"encoding/json"
 	"strconv"
 )
 
-// API base URL and headers (from mobile app: mobile.saujana.com.my, text/plain, version 1.4.0, type IOS).
 const (
 	BaseURL           = "http://mobile.saujana.com.my/ClubApp/json/Default.aspx/default.aspx"
 	HeaderToken       = "token"
@@ -18,13 +17,11 @@ const (
 	HeaderClientType  = "IOS"
 )
 
-// Course IDs (BRC = Bunga Raya, PLC = Palm).
 const (
 	CourseBRC = "BRC"
 	CoursePLC = "PLC"
 )
 
-// Request type constants.
 const (
 	RequestTypeLogin              = "OnlineValidateLogin"
 	RequestTypeTeeTime            = "GolfGetTeeTime"

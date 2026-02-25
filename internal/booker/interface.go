@@ -1,9 +1,9 @@
-package saujana
+package booker
 
-// ClientInterface is the subset of the Saujana API used by API handlers.
+// ClientInterface is the subset of the booking API used by handlers.
 // It allows tests to inject a mock (e.g. via mockgen) instead of the real client.
 //
-//go:generate mockgen -destination=./mock_client.go -package=saujana -source=interface.go
+//go:generate mockgen -destination=./mock_client.go -package=booker -source=interface.go
 type ClientInterface interface {
 	Login(userName, password string) (string, error)
 	GetTeeTimeSlots(token, courseID, txnDate string) ([]TeeTimeSlot, error)

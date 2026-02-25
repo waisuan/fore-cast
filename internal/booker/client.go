@@ -1,4 +1,4 @@
-package saujana
+package booker
 
 import (
 	"bytes"
@@ -10,7 +10,7 @@ import (
 	"strings"
 )
 
-// Client calls the Saujana Club JSON API. Create with NewClient.
+// Client calls the club booking JSON API. Create with NewClient.
 type Client struct {
 	baseURL    string
 	httpClient *http.Client
@@ -194,7 +194,6 @@ func (c *Client) do(body interface{}, token string) ([]byte, error) {
 	return raw, nil
 }
 
-// truncateBody returns a short snippet of the body for error messages; newlines become spaces.
 func truncateBody(b []byte, max int) string {
 	s := string(b)
 	for len(s) > 0 && (s[0] == '\r' || s[0] == '\n') {

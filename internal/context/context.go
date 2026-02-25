@@ -8,8 +8,8 @@ const userKey contextKey = "user"
 
 // User holds the authenticated user info from the session.
 type User struct {
-	UserName     string
-	SaujanaToken string
+	UserName string
+	APIToken string
 }
 
 // WithUser returns a context with the user attached.

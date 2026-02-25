@@ -6,13 +6,13 @@ import (
 	"time"
 
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
 // BookingHandler handles booking endpoints.
 type BookingHandler struct {
-	Saujana saujana.ClientInterface
+	Booker booker.ClientInterface
 }
 
 // GetBooking handles GET /api/v1/booking.
@@ -26,7 +26,7 @@ func (h *BookingHandler) GetBooking(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	resp, err := h.Saujana.GetBooking(u.SaujanaToken, u.UserName, "", "")
+	resp, err := h.Booker.GetBooking(u.APIToken, u.UserName, "", "")
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -60,7 +60,7 @@ func (h *BookingHandler) CheckStatus(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
-	input := saujana.GolfCheckTeeTimeStatusInput{
+	input := booker.GolfCheckTeeTimeStatusInput{
 		CourseID:  req.CourseID,
 		TxnDate:   req.TxnDate,
 		Session:   req.Session,
@@ -70,7 +70,7 @@ func (h *BookingHandler) CheckStatus(w http.ResponseWriter, r *http.Request) {
 		IPAddress: u.UserName,
 		Action:    0,
 	}
-	resp, err := h.Saujana.CheckTeeTimeStatus(u.SaujanaToken, input)
+	resp, err := h.Booker.CheckTeeTimeStatus(u.APIToken, input)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -104,7 +104,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 		return
 	}
-	checkInput := saujana.GolfCheckTeeTimeStatusInput{
+	checkInput := booker.GolfCheckTeeTimeStatusInput{
 		CourseID:  req.CourseID,
 		TxnDate:   req.TxnDate,
 		Session:   req.Session,
@@ -114,7 +114,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		IPAddress: u.UserName,
 		Action:    0,
 	}
-	statusResp, err := h.Saujana.CheckTeeTimeStatus(u.SaujanaToken, checkInput)
+	statusResp, err := h.Booker.CheckTeeTimeStatus(u.APIToken, checkInput)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -123,7 +123,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "slot no longer available", http.StatusConflict)
 		return
 	}
-	input := saujana.GolfNewBooking2Input{
+	input := booker.GolfNewBooking2Input{
 		CourseID:   req.CourseID,
 		TxnDate:    req.TxnDate,
 		Session:    req.Session,
@@ -134,7 +134,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		IPaddress:  u.UserName,
 		Holes:      18,
 	}
-	bookResp, err := h.Saujana.BookTeeTime(u.SaujanaToken, input, false)
+	bookResp, err := h.Booker.BookTeeTime(u.APIToken, input, false)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
@@ -196,7 +196,7 @@ func (h *BookingHandler) Auto(w http.ResponseWriter, r *http.Request) {
 	}
 	courseID := slotutil.CourseForDate(req.Date)
 	for round := 0; round < req.Retries; round++ {
-		slots, err := h.Saujana.GetTeeTimeSlots(u.SaujanaToken, courseID, req.Date)
+		slots, err := h.Booker.GetTeeTimeSlots(u.APIToken, courseID, req.Date)
 		if err != nil {
 			http.Error(w, err.Error(), http.StatusInternalServerError)
 			return
@@ -211,7 +211,7 @@ func (h *BookingHandler) Auto(w http.ResponseWriter, r *http.Request) {
 		}
 		for i := range beforeCutoff {
 			slot := &beforeCutoff[i]
-			checkInput := saujana.GolfCheckTeeTimeStatusInput{
+			checkInput := booker.GolfCheckTeeTimeStatusInput{
 				CourseID:  slot.CourseID,
 				TxnDate:   req.Date,
 				Session:   slot.Session,
@@ -221,11 +221,11 @@ func (h *BookingHandler) Auto(w http.ResponseWriter, r *http.Request) {
 				IPAddress: u.UserName,
 				Action:    0,
 			}
-			statusResp, err := h.Saujana.CheckTeeTimeStatus(u.SaujanaToken, checkInput)
+			statusResp, err := h.Booker.CheckTeeTimeStatus(u.APIToken, checkInput)
 			if err != nil || !statusResp.Status {
 				continue
 			}
-			input := saujana.GolfNewBooking2Input{
+			input := booker.GolfNewBooking2Input{
 				CourseID:   slot.CourseID,
 				TxnDate:    req.Date,
 				Session:    slot.Session,
@@ -236,7 +236,7 @@ func (h *BookingHandler) Auto(w http.ResponseWriter, r *http.Request) {
 				IPaddress:  u.UserName,
 				Holes:      18,
 			}
-			bookResp, err := h.Saujana.BookTeeTime(u.SaujanaToken, input, false)
+			bookResp, err := h.Booker.BookTeeTime(u.APIToken, input, false)
 			if err != nil || !bookResp.Status || len(bookResp.Result) == 0 || !bookResp.Result[0].Status {
 				continue
 			}

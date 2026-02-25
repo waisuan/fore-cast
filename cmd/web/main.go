@@ -12,15 +12,15 @@ import (
 
 	"github.com/waisuan/alfred/internal/config"
 	"github.com/waisuan/alfred/internal/router"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 func main() {
 	cfg := config.Load()
 	store := session.NewStore(cfg.SessionTTL)
-	saujanaClient := saujana.NewClient()
-	handler := router.New(cfg, store, saujanaClient)
+	client := booker.NewClient()
+	handler := router.New(cfg, store, client)
 
 	addr := "0.0.0.0:" + cfg.Port
 	listener, err := net.Listen("tcp", addr)

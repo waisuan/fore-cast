@@ -5,19 +5,19 @@ import (
 	"net/http"
 
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
 // SlotsHandler handles GET /api/v1/slots.
 type SlotsHandler struct {
-	Saujana saujana.ClientInterface
+	Booker booker.ClientInterface
 }
 
 // SlotsResponse is the response for GET slots.
 type SlotsResponse struct {
 	Course string                `json:"course"`
-	Slots  []saujana.TeeTimeSlot `json:"slots"`
+	Slots  []booker.TeeTimeSlot `json:"slots"`
 }
 
 func (h *SlotsHandler) Slots(w http.ResponseWriter, r *http.Request) {
@@ -40,7 +40,7 @@ func (h *SlotsHandler) Slots(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	courseID := slotutil.CourseForDate(date)
-	slots, err := h.Saujana.GetTeeTimeSlots(u.SaujanaToken, courseID, date)
+	slots, err := h.Booker.GetTeeTimeSlots(u.APIToken, courseID, date)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

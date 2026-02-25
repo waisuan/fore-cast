@@ -26,7 +26,7 @@ export default function LoginPage() {
     <div className="flex min-h-screen flex-col items-center justify-center px-4">
       <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow dark:border-gray-700 dark:bg-gray-800">
         <h1 className="mb-6 text-xl font-semibold text-gray-900 dark:text-white">
-          Alfred – Saujana Tee Times
+          fore-cast
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
           <div>
@@ -43,7 +43,7 @@ export default function LoginPage() {
               onChange={(e) => setUsername(e.target.value)}
               required
               className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900 focus:border-blue-500 focus:outline-none focus:ring-1 focus:ring-blue-500 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              placeholder="e.g. M8816-0"
+              placeholder="e.g. A1234-0"
               autoComplete="username"
             />
           </div>

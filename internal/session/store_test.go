@@ -20,7 +20,7 @@ func (s *StoreSuite) TestCreateGetDelete() {
 	data := store.Get(sid)
 	s.Require().NotNil(data)
 	s.Assert().Equal("user1", data.UserName)
-	s.Assert().Equal("token123", data.SaujanaToken)
+	s.Assert().Equal("token123", data.APIToken)
 
 	store.Delete(sid)
 	data = store.Get(sid)

@@ -1,6 +1,6 @@
 # Build the binary into bin/
-BINARY := bin/alfred
-WEB_BINARY := bin/alfred-web
+BINARY := bin/fore-cast
+WEB_BINARY := bin/fore-cast-web
 CMD := ./cmd/cli
 CMD_WEB := ./cmd/web
 
@@ -38,7 +38,7 @@ test:
 # Format, lint, and test (e.g. before commit or in CI)
 check: fmt lint test
 
-# Regenerate mocks (e.g. saujana mock). No global mockgen install required.
+# Regenerate mocks. No global mockgen install required.
 generate:
 	go generate ./...
 

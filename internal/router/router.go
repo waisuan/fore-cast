@@ -7,12 +7,12 @@ import (
 	"github.com/waisuan/alfred/internal/config"
 	"github.com/waisuan/alfred/internal/handlers"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 // New builds the HTTP router with all routes and middlewares.
-func New(cfg *config.Config, store *session.Store, saujanaClient *saujana.Client) http.Handler {
+func New(cfg *config.Config, store *session.Store, client *booker.Client) http.Handler {
 	r := mux.NewRouter()
 	r.Use(middlewares.CORS)
 
@@ -21,7 +21,7 @@ func New(cfg *config.Config, store *session.Store, saujanaClient *saujana.Client
 		_, _ = w.Write([]byte("ok"))
 	}).Methods(http.MethodGet)
 
-	authHandler := &handlers.AuthHandler{Saujana: saujanaClient, Store: store}
+	authHandler := &handlers.AuthHandler{Booker: client, Store: store}
 	r.HandleFunc("/api/v1/auth/login", authHandler.Login).Methods(http.MethodPost)
 
 	api := r.PathPrefix("/api/v1/").Subrouter()
@@ -30,10 +30,10 @@ func New(cfg *config.Config, store *session.Store, saujanaClient *saujana.Client
 	api.HandleFunc("/auth/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/auth/me", authHandler.Me).Methods(http.MethodGet)
 
-	slotsHandler := &handlers.SlotsHandler{Saujana: saujanaClient}
+	slotsHandler := &handlers.SlotsHandler{Booker: client}
 	api.HandleFunc("/slots", slotsHandler.Slots).Methods(http.MethodGet)
 
-	bookingHandler := &handlers.BookingHandler{Saujana: saujanaClient}
+	bookingHandler := &handlers.BookingHandler{Booker: client}
 	api.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
 	api.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	api.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)

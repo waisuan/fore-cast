@@ -4,8 +4,8 @@ import { AuthProvider } from '@/contexts/AuthContext';
 import AppContent from '@/components/AppContent';
 
 export const metadata: Metadata = {
-  title: 'Alfred – Saujana Tee Times',
-  description: 'Book tee times at Saujana Club',
+  title: 'fore-cast',
+  description: 'Golf tee time booking automation',
   viewport: 'width=device-width, initial-scale=1',
 };
 

@@ -6,14 +6,14 @@ import (
 
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/saujana"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 // AuthHandler handles login, logout, and me.
 type AuthHandler struct {
-	Saujana saujana.ClientInterface
-	Store   *session.Store
+	Booker booker.ClientInterface
+	Store  *session.Store
 }
 
 // LoginRequest is the body for POST /api/v1/auth/login.
@@ -44,7 +44,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username and password required", http.StatusBadRequest)
 		return
 	}
-	token, err := h.Saujana.Login(req.Username, req.Password)
+	token, err := h.Booker.Login(req.Username, req.Password)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
