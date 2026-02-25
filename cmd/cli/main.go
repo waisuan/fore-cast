@@ -36,6 +36,23 @@ func run() error {
 	flag.Usage = usage
 	flag.Parse()
 
+	fmt.Println("--- fore-cast ---")
+	fmt.Printf("  user:           %s\n", *user)
+	fmt.Printf("  date:           %s\n", valueOrDefault(*date, "1 week ahead"))
+	fmt.Printf("  cutoff:         %s\n", valueOrDefault(*cutoff, "8:15"))
+	fmt.Printf("  status:         %v\n", *statusOnly)
+	fmt.Printf("  slots:          %v\n", *showSlots)
+	fmt.Printf("  retry:          %v\n", *retry)
+	if *retry {
+		fmt.Printf("  retry-interval: %ds\n", *retryInterval)
+		fmt.Printf("  timeout:        %s\n", *timeout)
+	}
+	if *runAt != "" {
+		fmt.Printf("  at:             %s\n", *runAt)
+	}
+	fmt.Printf("  debug:          %v\n", *debug)
+	fmt.Println()
+
 	if *runAt != "" {
 		if err := waitUntil(*runAt); err != nil {
 			return err
@@ -262,4 +279,11 @@ Target date defaults to 1 week from today. Course is chosen by day:
 Options:
 `, os.Args[0])
 	flag.PrintDefaults()
+}
+
+func valueOrDefault(v, fallback string) string {
+	if v == "" {
+		return fallback
+	}
+	return v
 }
