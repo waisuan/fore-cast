@@ -1,5 +1,6 @@
+// Use relative URL so requests go to same origin (Next.js); rewrites proxy /api to the Go server.
 export const API_BASE_URL =
-  process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
+  typeof window !== 'undefined' ? '' : process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
 export const API_ENDPOINTS = {
   login: '/api/v1/auth/login',

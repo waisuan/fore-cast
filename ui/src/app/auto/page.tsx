@@ -4,9 +4,14 @@ import { useState } from 'react';
 import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 
+// API expects date YYYY/MM/DD; input type="date" uses YYYY-MM-DD
+function toApiDate(isoDate: string) {
+  return isoDate ? isoDate.replace(/-/g, '/') : '';
+}
+
 export default function AutoPage() {
-  const [date, setDate] = useState('');
-  const [cutoff, setCutoff] = useState('8:15');
+  const [date, setDate] = useState(''); // YYYY-MM-DD for input type="date"
+  const [cutoff, setCutoff] = useState('08:15'); // HH:MM for input type="time"
   const [retries, setRetries] = useState(1);
   const [retryIntervalSec, setRetryIntervalSec] = useState(5);
   const [loading, setLoading] = useState(false);
@@ -20,7 +25,7 @@ export default function AutoPage() {
     setLoading(true);
     try {
       const res = await api.post<{ bookingID: string }>(API_ENDPOINTS.bookingAuto, {
-        date,
+        date: toApiDate(date),
         cutoff,
         retries: retries < 1 ? 1 : retries,
         retry_interval_sec: retryIntervalSec < 1 ? 5 : retryIntervalSec,
@@ -46,25 +51,24 @@ export default function AutoPage() {
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <div>
           <label htmlFor="date" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Date (YYYY/MM/DD) *
+            Date *
           </label>
           <input
             id="date"
-            type="text"
+            type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            placeholder="2026/02/25"
             required
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
         </div>
         <div>
           <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Cutoff time (e.g. 8:15)
+            Cutoff time
           </label>
           <input
             id="cutoff"
-            type="text"
+            type="time"
             value={cutoff}
             onChange={(e) => setCutoff(e.target.value)}
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

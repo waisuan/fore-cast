@@ -17,11 +17,16 @@ interface SlotsResponse {
   slots: Slot[];
 }
 
+// API expects date YYYY/MM/DD; input type="date" uses YYYY-MM-DD
+function toApiDate(isoDate: string) {
+  return isoDate ? isoDate.replace(/-/g, '/') : '';
+}
+
 export default function SlotsPage() {
-  const [date, setDate] = useState('');
-  const [cutoff, setCutoff] = useState('8:15');
+  const [date, setDate] = useState(''); // YYYY-MM-DD for input type="date"
   const [data, setData] = useState<SlotsResponse | null>(null);
   const [loading, setLoading] = useState(false);
+  const [bookingSlotKey, setBookingSlotKey] = useState<string | null>(null);
   const [error, setError] = useState('');
   const [bookingId, setBookingId] = useState<string | null>(null);
 
@@ -34,8 +39,8 @@ export default function SlotsPage() {
     setLoading(true);
     setData(null);
     try {
-      const params = new URLSearchParams({ date });
-      if (cutoff) params.set('cutoff', cutoff);
+      const apiDate = toApiDate(date);
+      const params = new URLSearchParams({ date: apiDate });
       const res = await api.get<SlotsResponse>(
         `${API_ENDPOINTS.slots}?${params.toString()}`
       );
@@ -48,11 +53,13 @@ export default function SlotsPage() {
   }
 
   async function bookSlot(slot: Slot) {
+    const key = `${slot.TeeTime}-${slot.TeeBox}`;
+    setBookingSlotKey(key);
     setError('');
     try {
       const res = await api.post<{ bookingID: string }>(API_ENDPOINTS.bookingBook, {
         courseID: slot.CourseID,
-        txnDate: date,
+        txnDate: toApiDate(date),
         session: slot.Session,
         teeBox: slot.TeeBox,
         teeTime: slot.TeeTime,
@@ -60,6 +67,8 @@ export default function SlotsPage() {
       setBookingId(res.bookingID);
     } catch (e) {
       setError(e instanceof ApiError ? e.message : 'Booking failed');
+    } finally {
+      setBookingSlotKey(null);
     }
   }
 
@@ -81,27 +90,14 @@ export default function SlotsPage() {
       <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
         <div>
           <label htmlFor="date" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Date (YYYY/MM/DD)
+            Date
           </label>
           <input
             id="date"
-            type="text"
+            type="date"
             value={date}
             onChange={(e) => setDate(e.target.value)}
-            placeholder="2026/02/25"
             className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-40"
-          />
-        </div>
-        <div>
-          <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Cutoff (e.g. 8:15)
-          </label>
-          <input
-            id="cutoff"
-            type="text"
-            value={cutoff}
-            onChange={(e) => setCutoff(e.target.value)}
-            className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-24"
           />
         </div>
         <button
@@ -136,9 +132,14 @@ export default function SlotsPage() {
                 <button
                   type="button"
                   onClick={() => bookSlot(slot)}
-                  className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700"
+                  disabled={bookingSlotKey !== null}
+                  className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:opacity-70 disabled:cursor-not-allowed"
                 >
-                  Book
+                  {bookingSlotKey === `${slot.TeeTime}-${slot.TeeBox}` ? (
+                    <>Booking…</>
+                  ) : (
+                    'Book'
+                  )}
                 </button>
               </li>
             ))}

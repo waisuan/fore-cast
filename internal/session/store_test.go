@@ -3,40 +3,41 @@ package session
 import (
 	"testing"
 	"time"
+
+	"github.com/stretchr/testify/suite"
 )
 
-func TestStore_CreateGetDelete(t *testing.T) {
-	store := NewStore(24 * time.Hour)
-	sid, err := store.Create("token123", "user1")
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
-	if sid == "" {
-		t.Fatal("Create returned empty session ID")
-	}
-	data := store.Get(sid)
-	if data == nil {
-		t.Fatal("Get returned nil")
-	}
-	if data.UserName != "user1" || data.SaujanaToken != "token123" {
-		t.Errorf("Get: got %+v", data)
-	}
-	store.Delete(sid)
-	data = store.Get(sid)
-	if data != nil {
-		t.Error("Get after Delete should return nil")
-	}
+type StoreSuite struct {
+	suite.Suite
 }
 
-func TestStore_Expiry(t *testing.T) {
+func (s *StoreSuite) TestCreateGetDelete() {
+	store := NewStore(24 * time.Hour)
+	sid, err := store.Create("token123", "user1")
+	s.Require().NoError(err)
+	s.Require().NotEmpty(sid)
+
+	data := store.Get(sid)
+	s.Require().NotNil(data)
+	s.Assert().Equal("user1", data.UserName)
+	s.Assert().Equal("token123", data.SaujanaToken)
+
+	store.Delete(sid)
+	data = store.Get(sid)
+	s.Assert().Nil(data)
+}
+
+func (s *StoreSuite) TestExpiry() {
 	store := NewStore(10 * time.Millisecond)
 	sid, err := store.Create("t", "u")
-	if err != nil {
-		t.Fatalf("Create: %v", err)
-	}
+	s.Require().NoError(err)
+
 	time.Sleep(15 * time.Millisecond)
 	data := store.Get(sid)
-	if data != nil {
-		t.Error("Get after TTL should return nil")
-	}
+	s.Assert().Nil(data)
+}
+
+func TestStoreSuite(t *testing.T) {
+	t.Parallel()
+	suite.Run(t, new(StoreSuite))
 }

@@ -12,7 +12,7 @@ import (
 
 // BookingHandler handles booking endpoints.
 type BookingHandler struct {
-	Saujana *saujana.Client
+	Saujana saujana.ClientInterface
 }
 
 // GetBooking handles GET /api/v1/booking.

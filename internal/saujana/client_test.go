@@ -4,9 +4,15 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+
+	"github.com/stretchr/testify/suite"
 )
 
-func TestLogin_Success(t *testing.T) {
+type ClientSuite struct {
+	suite.Suite
+}
+
+func (s *ClientSuite) TestLogin_Success() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Token":"test-token-123"}`))
@@ -15,15 +21,11 @@ func TestLogin_Success(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	token, err := client.Login("user", "pass")
-	if err != nil {
-		t.Fatalf("Login: %v", err)
-	}
-	if token != "test-token-123" {
-		t.Errorf("token = %q, want test-token-123", token)
-	}
+	s.Require().NoError(err)
+	s.Assert().Equal("test-token-123", token)
 }
 
-func TestLogin_Rejected(t *testing.T) {
+func (s *ClientSuite) TestLogin_Rejected() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":false,"Token":""}`))
@@ -32,12 +34,10 @@ func TestLogin_Rejected(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	_, err := client.Login("user", "wrong")
-	if err == nil {
-		t.Fatal("Login expected error")
-	}
+	s.Require().Error(err)
 }
 
-func TestLogin_EmptyToken(t *testing.T) {
+func (s *ClientSuite) TestLogin_EmptyToken() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Token":""}`))
@@ -46,12 +46,10 @@ func TestLogin_EmptyToken(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	_, err := client.Login("user", "pass")
-	if err == nil {
-		t.Fatal("Login expected error when Token empty")
-	}
+	s.Require().Error(err)
 }
 
-func TestLogin_HTMLResponse(t *testing.T) {
+func (s *ClientSuite) TestLogin_HTMLResponse() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "text/html")
 		_, _ = w.Write([]byte(`<!DOCTYPE html><html></html>`))
@@ -60,12 +58,10 @@ func TestLogin_HTMLResponse(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	_, err := client.Login("user", "pass")
-	if err == nil {
-		t.Fatal("Login expected error for HTML response")
-	}
+	s.Require().Error(err)
 }
 
-func TestGetTeeTimeSlots_Success(t *testing.T) {
+func (s *ClientSuite) TestGetTeeTimeSlots_Success() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Result":[{"CourseID":"BRC","TeeTime":"1899-12-30T07:37:00","Session":"Morning","TeeBox":"1"}]}`))
@@ -74,18 +70,14 @@ func TestGetTeeTimeSlots_Success(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	slots, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
-	if err != nil {
-		t.Fatalf("GetTeeTimeSlots: %v", err)
-	}
-	if len(slots) != 1 {
-		t.Fatalf("len(slots) = %d, want 1", len(slots))
-	}
-	if slots[0].TeeTime != "1899-12-30T07:37:00" || slots[0].CourseID != "BRC" || slots[0].TeeBox.String() != "1" {
-		t.Errorf("slot = %+v", slots[0])
-	}
+	s.Require().NoError(err)
+	s.Require().Len(slots, 1)
+	s.Assert().Equal("1899-12-30T07:37:00", slots[0].TeeTime)
+	s.Assert().Equal("BRC", slots[0].CourseID)
+	s.Assert().Equal("1", slots[0].TeeBox.String())
 }
 
-func TestGetTeeTimeSlots_StatusFalse(t *testing.T) {
+func (s *ClientSuite) TestGetTeeTimeSlots_StatusFalse() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":false,"Result":[]}`))
@@ -94,12 +86,10 @@ func TestGetTeeTimeSlots_StatusFalse(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	_, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
-	if err == nil {
-		t.Fatal("GetTeeTimeSlots expected error when Status=false")
-	}
+	s.Require().Error(err)
 }
 
-func TestBookTeeTime_Success(t *testing.T) {
+func (s *ClientSuite) TestBookTeeTime_Success() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Reason":"","Result":[{"Status":true,"BookingID":"BK001"}]}`))
@@ -112,15 +102,14 @@ func TestBookTeeTime_Success(t *testing.T) {
 		TeeTime: "1899-12-30T07:37:00", AccountID: "user", TotalGuest: 4, IPaddress: "user", Holes: 18,
 	}
 	resp, err := client.BookTeeTime("token", input, false)
-	if err != nil {
-		t.Fatalf("BookTeeTime: %v", err)
-	}
-	if !resp.Status || len(resp.Result) == 0 || !resp.Result[0].Status || resp.Result[0].BookingID != "BK001" {
-		t.Errorf("resp = %+v", resp)
-	}
+	s.Require().NoError(err)
+	s.Require().True(resp.Status)
+	s.Require().NotEmpty(resp.Result)
+	s.Assert().True(resp.Result[0].Status)
+	s.Assert().Equal("BK001", resp.Result[0].BookingID)
 }
 
-func TestCheckTeeTimeStatus_Success(t *testing.T) {
+func (s *ClientSuite) TestCheckTeeTimeStatus_Success() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Reason":"Available"}`))
@@ -133,15 +122,12 @@ func TestCheckTeeTimeStatus_Success(t *testing.T) {
 		TeeTime: "1899-12-30T07:37:00", UserName: "user", IPAddress: "user", Action: 0,
 	}
 	resp, err := client.CheckTeeTimeStatus("token", input)
-	if err != nil {
-		t.Fatalf("CheckTeeTimeStatus: %v", err)
-	}
-	if !resp.Status || resp.Reason != "Available" {
-		t.Errorf("resp = %+v", resp)
-	}
+	s.Require().NoError(err)
+	s.Assert().True(resp.Status)
+	s.Assert().Equal("Available", resp.Reason)
 }
 
-func TestGetBooking_Success(t *testing.T) {
+func (s *ClientSuite) TestGetBooking_Success() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Result":[{"BookingID":"BK001","TxnDate":"2026/02/25","CourseID":"BRC","TeeTime":"07:37","Session":"Morning","TeeBox":"1","Pax":4,"Hole":18,"Name":"Member"}]}`))
@@ -150,15 +136,13 @@ func TestGetBooking_Success(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	resp, err := client.GetBooking("token", "user", "", "")
-	if err != nil {
-		t.Fatalf("GetBooking: %v", err)
-	}
-	if !resp.Status || len(resp.Result) != 1 || resp.Result[0].BookingID != "BK001" {
-		t.Errorf("resp = %+v", resp)
-	}
+	s.Require().NoError(err)
+	s.Require().True(resp.Status)
+	s.Require().Len(resp.Result, 1)
+	s.Assert().Equal("BK001", resp.Result[0].BookingID)
 }
 
-func TestGetTeeTimeSlots_TeeBoxAsNumber(t *testing.T) {
+func (s *ClientSuite) TestGetTeeTimeSlots_TeeBoxAsNumber() {
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		_, _ = w.Write([]byte(`{"Status":true,"Result":[{"CourseID":"BRC","TeeTime":"1899-12-30T07:37:00","Session":"Morning","TeeBox":10}]}`))
@@ -167,13 +151,12 @@ func TestGetTeeTimeSlots_TeeBoxAsNumber(t *testing.T) {
 
 	client := NewClientWithBaseURL(srv.URL)
 	slots, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
-	if err != nil {
-		t.Fatalf("GetTeeTimeSlots: %v", err)
-	}
-	if len(slots) != 1 {
-		t.Fatalf("len(slots) = %d, want 1", len(slots))
-	}
-	if slots[0].TeeBox.String() != "10" {
-		t.Errorf("TeeBox (number) = %q, want \"10\"", slots[0].TeeBox.String())
-	}
+	s.Require().NoError(err)
+	s.Require().Len(slots, 1)
+	s.Assert().Equal("10", slots[0].TeeBox.String())
+}
+
+func TestClientSuite(t *testing.T) {
+	t.Parallel()
+	suite.Run(t, new(ClientSuite))
 }

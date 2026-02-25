@@ -12,7 +12,7 @@ import (
 
 // AuthHandler handles login, logout, and me.
 type AuthHandler struct {
-	Saujana *saujana.Client
+	Saujana saujana.ClientInterface
 	Store   *session.Store
 }
 

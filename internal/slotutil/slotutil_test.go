@@ -4,10 +4,15 @@ import (
 	"testing"
 	"time"
 
+	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/saujana"
 )
 
-func TestCourseForDate(t *testing.T) {
+type SlotutilSuite struct {
+	suite.Suite
+}
+
+func (s *SlotutilSuite) TestCourseForDate() {
 	tests := []struct {
 		date string
 		want string
@@ -24,16 +29,14 @@ func TestCourseForDate(t *testing.T) {
 		{"", saujana.CoursePLC, "empty -> fallback PLC"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.desc, func(t *testing.T) {
+		s.Run(tt.desc, func() {
 			got := CourseForDate(tt.date)
-			if got != tt.want {
-				t.Errorf("CourseForDate(%q) = %q, want %q", tt.date, got, tt.want)
-			}
+			s.Assert().Equal(tt.want, got)
 		})
 	}
 }
 
-func TestParseCutoff(t *testing.T) {
+func (s *SlotutilSuite) TestParseCutoff() {
 	tests := []struct {
 		in   string
 		want string
@@ -51,25 +54,19 @@ func TestParseCutoff(t *testing.T) {
 		{"abc", "", true, "invalid format"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.desc, func(t *testing.T) {
+		s.Run(tt.desc, func() {
 			got, err := ParseCutoff(tt.in)
 			if tt.err {
-				if err == nil {
-					t.Errorf("ParseCutoff(%q) expected error", tt.in)
-				}
+				s.Require().Error(err)
 				return
 			}
-			if err != nil {
-				t.Fatalf("ParseCutoff(%q): %v", tt.in, err)
-			}
-			if got != tt.want {
-				t.Errorf("ParseCutoff(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+			s.Require().NoError(err)
+			s.Assert().Equal(tt.want, got)
 		})
 	}
 }
 
-func TestSlotsBeforeCutoff(t *testing.T) {
+func (s *SlotutilSuite) TestSlotsBeforeCutoff() {
 	cutoff := "1899-12-30T08:15:00"
 	mkSlot := func(teeTime string) saujana.TeeTimeSlot {
 		return saujana.TeeTimeSlot{TeeTime: teeTime, CourseID: "BRC", Session: "Morning", TeeBox: "1"}
@@ -78,7 +75,7 @@ func TestSlotsBeforeCutoff(t *testing.T) {
 		name   string
 		slots  []saujana.TeeTimeSlot
 		cutoff string
-		want   []string // TeeTime values in order
+		want   []string
 	}{
 		{"empty", nil, cutoff, nil},
 		{"all before", []saujana.TeeTimeSlot{mkSlot("1899-12-30T07:00:00"), mkSlot("1899-12-30T08:00:00")}, cutoff, []string{"1899-12-30T07:00:00", "1899-12-30T08:00:00"}},
@@ -87,21 +84,17 @@ func TestSlotsBeforeCutoff(t *testing.T) {
 		{"single before", []saujana.TeeTimeSlot{mkSlot("1899-12-30T07:37:00")}, cutoff, []string{"1899-12-30T07:37:00"}},
 	}
 	for _, tt := range tests {
-		t.Run(tt.name, func(t *testing.T) {
+		s.Run(tt.name, func() {
 			got := SlotsBeforeCutoff(tt.slots, tt.cutoff)
-			if len(got) != len(tt.want) {
-				t.Fatalf("len(SlotsBeforeCutoff) = %d, want %d", len(got), len(tt.want))
-			}
+			s.Require().Len(got, len(tt.want))
 			for i := range got {
-				if got[i].TeeTime != tt.want[i] {
-					t.Errorf("result[%d].TeeTime = %q, want %q", i, got[i].TeeTime, tt.want[i])
-				}
+				s.Assert().Equal(tt.want[i], got[i].TeeTime)
 			}
 		})
 	}
 }
 
-func TestValidateDate(t *testing.T) {
+func (s *SlotutilSuite) TestValidateDate() {
 	tests := []struct {
 		date  string
 		valid bool
@@ -114,19 +107,18 @@ func TestValidateDate(t *testing.T) {
 		{"", false, "empty"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.desc, func(t *testing.T) {
+		s.Run(tt.desc, func() {
 			err := ValidateDate(tt.date)
-			if tt.valid && err != nil {
-				t.Errorf("ValidateDate(%q) unexpected error: %v", tt.date, err)
-			}
-			if !tt.valid && err == nil {
-				t.Errorf("ValidateDate(%q) expected error", tt.date)
+			if tt.valid {
+				s.Assert().NoError(err)
+			} else {
+				s.Assert().Error(err)
 			}
 		})
 	}
 }
 
-func TestFormatCutoffDisplay(t *testing.T) {
+func (s *SlotutilSuite) TestFormatCutoffDisplay() {
 	tests := []struct {
 		in   string
 		want string
@@ -139,23 +131,22 @@ func TestFormatCutoffDisplay(t *testing.T) {
 		{"", "", "empty"},
 	}
 	for _, tt := range tests {
-		t.Run(tt.desc, func(t *testing.T) {
+		s.Run(tt.desc, func() {
 			got := FormatCutoffDisplay(tt.in)
-			if got != tt.want {
-				t.Errorf("FormatCutoffDisplay(%q) = %q, want %q", tt.in, got, tt.want)
-			}
+			s.Assert().Equal(tt.want, got)
 		})
 	}
 }
 
-func TestDateOneWeekAhead(t *testing.T) {
+func (s *SlotutilSuite) TestDateOneWeekAhead() {
 	got := DateOneWeekAhead()
 	_, err := time.Parse("2006/01/02", got)
-	if err != nil {
-		t.Errorf("DateOneWeekAhead() = %q, invalid format: %v", got, err)
-	}
+	s.Require().NoError(err)
 	expected := time.Now().AddDate(0, 0, 7).Format("2006/01/02")
-	if got != expected {
-		t.Errorf("DateOneWeekAhead() = %q, want %q", got, expected)
-	}
+	s.Assert().Equal(expected, got)
+}
+
+func TestSlotutilSuite(t *testing.T) {
+	t.Parallel()
+	suite.Run(t, new(SlotutilSuite))
 }

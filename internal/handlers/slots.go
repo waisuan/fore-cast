@@ -11,7 +11,7 @@ import (
 
 // SlotsHandler handles GET /api/v1/slots.
 type SlotsHandler struct {
-	Saujana *saujana.Client
+	Saujana saujana.ClientInterface
 }
 
 // SlotsResponse is the response for GET slots.

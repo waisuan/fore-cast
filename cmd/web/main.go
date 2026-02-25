@@ -2,6 +2,8 @@ package main
 
 import (
 	"context"
+	"log"
+	"net"
 	"net/http"
 	"os"
 	"os/signal"
@@ -20,17 +22,23 @@ func main() {
 	saujanaClient := saujana.NewClient()
 	handler := router.New(cfg, store, saujanaClient)
 
+	addr := "0.0.0.0:" + cfg.Port
+	listener, err := net.Listen("tcp", addr)
+	if err != nil {
+		log.Fatalf("Server failed to bind: %v", err)
+	}
+
 	server := &http.Server{
-		Addr:         ":" + cfg.Port,
 		Handler:      handler,
 		ReadTimeout:  cfg.ReadTimeout,
 		WriteTimeout: cfg.WriteTimeout,
 		IdleTimeout:  cfg.IdleTimeout,
 	}
 
+	log.Printf("Server listening on http://localhost:%s", cfg.Port)
 	go func() {
-		if err := server.ListenAndServe(); err != nil && err != http.ErrServerClosed {
-			os.Exit(1)
+		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
+			log.Fatalf("Server failed: %v", err)
 		}
 	}()
 
