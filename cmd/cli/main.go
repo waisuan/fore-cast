@@ -28,8 +28,9 @@ func run() error {
 	cutoff := flag.String("cutoff", "", "Only book slots before this time, e.g. 8:15 or 7:30 (default: 8:15)")
 	statusOnly := flag.Bool("status", false, "Only show current booking status (no booking)")
 	showSlots := flag.Bool("slots", false, "Show available tee time slots for the given date (no booking)")
-	retry := flag.Bool("retry", false, "Retry loop: keep trying to book until a slot is booked or none available before cutoff (e.g. for 9:50–10 PM window)")
+	retry := flag.Bool("retry", false, "Retry loop: keep trying to book until a slot is booked or none available before cutoff")
 	retryInterval := flag.Int("retry-interval", defaultRetryIntervalSec, "Seconds between rounds when using -retry")
+	timeout := flag.Duration("timeout", 10*time.Minute, "Max time to spend retrying (0 = no limit)")
 	runAt := flag.String("at", "", "Run at this time today (24h, e.g. 22:00 for 10 PM); waits then runs with all other flags")
 	debug := flag.Bool("debug", false, "Print booking request/response body for troubleshooting")
 	flag.Usage = usage
@@ -74,7 +75,7 @@ func run() error {
 	}
 
 	defer printBookingStatus(client, token, *user)
-	return runRetryLoop(client, token, txnDate, *user, cutoffTeeTime, *retryInterval, *retry, *debug)
+	return runRetryLoop(client, token, txnDate, *user, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
 }
 
 // tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", nil) on failure.
@@ -125,13 +126,17 @@ func printTeeTimeStatus(client *booker.Client, token string, slot *booker.TeeTim
 }
 
 // runRetryLoop fetches slots and attempts to book them.
-// When retry is true, loops until a slot is booked or none remain before cutoff.
-func runRetryLoop(client *booker.Client, token, txnDate, userName, cutoffTeeTime string, intervalSec int, retry, debug bool) error {
+// When retry is true, loops until a slot is booked, none remain before cutoff, or timeout is reached.
+func runRetryLoop(client *booker.Client, token, txnDate, userName, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) error {
 	courseID := slotutil.CourseForDate(txnDate)
+	start := time.Now()
 
 	for round := 1; ; round++ {
 		if !retry && round > 1 {
 			break
+		}
+		if retry && timeout > 0 && time.Since(start) >= timeout {
+			return fmt.Errorf("timeout after %s with no booking", timeout)
 		}
 		fmt.Printf("Target date: %s | Course: %s", txnDate, courseID)
 		if retry {
