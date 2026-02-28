@@ -206,7 +206,8 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cut
 			}
 		}
 		if !retry {
-			return "", fmt.Errorf("could not book any slot before %s (tried %d)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff))
+			earliest := slotsBeforeCutoff[0]
+			return "", fmt.Errorf("could not book any slot before %s (tried %d, earliest was %s)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff), earliest.TeeTime)
 		}
 		fmt.Printf("No slot booked this round. Retrying in %d seconds...\n", intervalSec)
 		time.Sleep(time.Duration(intervalSec) * time.Second)
