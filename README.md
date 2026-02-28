@@ -1,6 +1,6 @@
 # fore-cast
 
-Golf tee time booking automation. Books the earliest available slot before a configurable cutoff time, with support for retry loops, scheduled execution, and specific slot targeting.
+Golf tee time booking automation. Books the earliest available slot before a configurable cutoff time, with support for retry loops, scheduled execution, and push notifications.
 
 ## How it works
 
@@ -9,7 +9,7 @@ Golf tee time booking automation. Books the earliest available slot before a con
 3. Filters slots before the cutoff time (default: 8:15 AM).
 4. Checks each slot's availability, then attempts to book the earliest one.
 
-Course is selected automatically based on the day of the week.
+Course is selected automatically based on the day of the week (override with `-course`).
 
 ## Prerequisites
 
@@ -37,7 +37,13 @@ Credentials are passed via `-user` and `-password`.
 ./bin/fore-cast -user <member-id> -password <password> -slots -date 2026/03/04
 
 # Retry until booked (useful for competitive booking windows)
+./bin/fore-cast -user <member-id> -password <password> -retry -timeout 10m
+
+# Delay execution until a specific time (e.g. wait for booking window to open)
 ./bin/fore-cast -user <member-id> -password <password> -retry -at 22:00
+
+# Enable push notifications via ntfy.sh
+./bin/fore-cast -user <member-id> -password <password> -retry -ntfy <topic-name>
 ```
 
 Run `./bin/fore-cast -help` for the full list of flags and options.
