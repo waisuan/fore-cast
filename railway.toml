@@ -2,5 +2,5 @@
 buildCommand = "go build -o bin/fore-cast ./cmd/cli"
 
 [deploy]
-startCommand = "bin/fore-cast -user $FORE_CAST_USER -password $FORE_CAST_PASSWORD -retry -retry-interval ${FORE_CAST_RETRY_INTERVAL:-1} -timeout ${FORE_CAST_TIMEOUT:-10m} ${FORE_CAST_DATE:+-date $FORE_CAST_DATE} ${FORE_CAST_CUTOFF:+-cutoff $FORE_CAST_CUTOFF} ${FORE_CAST_COURSE:+-course $FORE_CAST_COURSE} || true"
+startCommand = "bin/fore-cast -user $FORE_CAST_USER -password $FORE_CAST_PASSWORD -retry -retry-interval ${FORE_CAST_RETRY_INTERVAL:-1} -timeout ${FORE_CAST_TIMEOUT:-10m} ${FORE_CAST_DATE:+-date $FORE_CAST_DATE} ${FORE_CAST_CUTOFF:+-cutoff $FORE_CAST_CUTOFF} ${FORE_CAST_COURSE:+-course $FORE_CAST_COURSE} ${NTFY_TOPIC:+-ntfy $NTFY_TOPIC} || true"
 restartPolicyType = "never"

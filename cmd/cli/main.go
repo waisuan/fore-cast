@@ -3,6 +3,7 @@ package main
 import (
 	"flag"
 	"fmt"
+	"net/http"
 	"os"
 	"sort"
 	"strings"
@@ -13,6 +14,7 @@ import (
 )
 
 const defaultRetryIntervalSec = 5
+
 
 func main() {
 	if err := run(); err != nil {
@@ -34,8 +36,10 @@ func run() error {
 	timeout := flag.Duration("timeout", 10*time.Minute, "Max time to spend retrying (0 = no limit)")
 	runAt := flag.String("at", "", "Run at this time today (24h, e.g. 22:00 for 10 PM); waits then runs with all other flags")
 	debug := flag.Bool("debug", false, "Print booking request/response body for troubleshooting")
+	ntfy := flag.String("ntfy", "", "ntfy.sh topic for push notifications on success/failure")
 	flag.Usage = usage
 	flag.Parse()
+
 
 	fmt.Println("--- fore-cast ---")
 	fmt.Printf("  user:           %s\n", *user)
@@ -55,6 +59,9 @@ func run() error {
 		fmt.Printf("  at:             %s\n", *runAt)
 	}
 	fmt.Printf("  debug:          %v\n", *debug)
+	if *ntfy != "" {
+		fmt.Printf("  ntfy:           %s\n", *ntfy)
+	}
 	fmt.Println()
 
 	if *runAt != "" {
@@ -101,7 +108,13 @@ func run() error {
 	}
 
 	defer printBookingStatus(client, token, *user)
-	return runRetryLoop(client, token, txnDate, *user, courseID, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
+	msg, err := runRetryLoop(client, token, txnDate, *user, courseID, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
+	if err != nil {
+		notify(*ntfy, "FAILED: "+err.Error())
+	} else if msg != "" {
+		notify(*ntfy, msg)
+	}
+	return err
 }
 
 // tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", nil) on failure.
@@ -153,7 +166,7 @@ func printTeeTimeStatus(client *booker.Client, token string, slot *booker.TeeTim
 
 // runRetryLoop fetches slots and attempts to book them.
 // When retry is true, loops until a slot is booked, none remain before cutoff, or timeout is reached.
-func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) error {
+func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) (string, error) {
 	start := time.Now()
 
 	for round := 1; ; round++ {
@@ -161,7 +174,7 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cut
 			break
 		}
 		if retry && timeout > 0 && time.Since(start) >= timeout {
-			return fmt.Errorf("timeout after %s with no booking", timeout)
+			return "", fmt.Errorf("timeout after %s with no booking", timeout)
 		}
 		fmt.Printf("Target date: %s | Course: %s", txnDate, courseID)
 		if retry {
@@ -171,7 +184,7 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cut
 		slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
 		if err != nil {
 			if !retry {
-				return fmt.Errorf("get tee times: %w", err)
+				return "", fmt.Errorf("get tee times: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "[round %d] get tee times: %v\n", round, err)
 			time.Sleep(time.Duration(intervalSec) * time.Second)
@@ -179,7 +192,7 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cut
 		}
 		slotsBeforeCutoff := slotutil.SlotsBeforeCutoff(slots, cutoffTeeTime)
 		if len(slotsBeforeCutoff) == 0 {
-			return fmt.Errorf("earliest available slot is at or after %s (cutoff). No booking made", slotutil.FormatCutoffDisplay(cutoffTeeTime))
+			return "", fmt.Errorf("earliest available slot is at or after %s (cutoff). No booking made", slotutil.FormatCutoffDisplay(cutoffTeeTime))
 		}
 		for si := range slotsBeforeCutoff {
 			slot := &slotsBeforeCutoff[si]
@@ -187,17 +200,18 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cut
 			printTeeTimeStatus(client, token, slot, txnDate, userName)
 			booked, bookingID, _ := tryBookSlot(client, token, slot, txnDate, userName, debug)
 			if booked {
-				fmt.Printf("Booked successfully. BookingID: %s\n", bookingID)
-				return nil
+				msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s", slot.TeeTime, slot.Session, slot.TeeBox.String(), txnDate, courseID, bookingID)
+				fmt.Println(msg)
+				return msg, nil
 			}
 		}
 		if !retry {
-			return fmt.Errorf("could not book any slot before %s (tried %d)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff))
+			return "", fmt.Errorf("could not book any slot before %s (tried %d)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff))
 		}
 		fmt.Printf("No slot booked this round. Retrying in %d seconds...\n", intervalSec)
 		time.Sleep(time.Duration(intervalSec) * time.Second)
 	}
-	return nil
+	return "", nil
 }
 
 // printSlots fetches and prints available tee time slots for the date (no booking).
@@ -293,4 +307,18 @@ func valueOrDefault(v, fallback string) string {
 		return fallback
 	}
 	return v
+}
+
+func notify(topic, msg string) {
+	if topic == "" {
+		return
+	}
+	url := "https://ntfy.sh/" + topic
+	resp, err := http.Post(url, "text/plain", strings.NewReader(msg))
+	if err != nil {
+		fmt.Fprintf(os.Stderr, "ntfy: %v\n", err)
+		return
+	}
+	resp.Body.Close()
+	fmt.Printf("ntfy: notified topic %s\n", topic)
 }
