@@ -318,6 +318,6 @@ func notify(topic, msg string) {
 		fmt.Fprintf(os.Stderr, "ntfy: %v\n", err)
 		return
 	}
-	resp.Body.Close()
+	_ = resp.Body.Close()
 	fmt.Printf("ntfy: notified topic %s\n", topic)
 }
