@@ -10,9 +10,9 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/config"
 	"github.com/waisuan/alfred/internal/router"
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 

@@ -4,9 +4,9 @@ import (
 	"encoding/json"
 	"net/http"
 
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 

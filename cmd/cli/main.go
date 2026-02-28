@@ -15,7 +15,6 @@ import (
 
 const defaultRetryIntervalSec = 5
 
-
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -39,7 +38,6 @@ func run() error {
 	ntfy := flag.String("ntfy", "", "ntfy.sh topic for push notifications on success/failure")
 	flag.Usage = usage
 	flag.Parse()
-
 
 	fmt.Println("--- fore-cast ---")
 	fmt.Printf("  user:           %s\n", *user)

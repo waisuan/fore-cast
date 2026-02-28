@@ -10,9 +10,9 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 

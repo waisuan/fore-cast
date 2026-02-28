@@ -5,8 +5,8 @@ import (
 	"net/http"
 	"time"
 
-	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 

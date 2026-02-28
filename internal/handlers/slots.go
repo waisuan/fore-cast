@@ -4,8 +4,8 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
@@ -16,7 +16,7 @@ type SlotsHandler struct {
 
 // SlotsResponse is the response for GET slots.
 type SlotsResponse struct {
-	Course string                `json:"course"`
+	Course string               `json:"course"`
 	Slots  []booker.TeeTimeSlot `json:"slots"`
 }
 

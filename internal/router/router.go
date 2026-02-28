@@ -4,10 +4,10 @@ import (
 	"net/http"
 
 	"github.com/gorilla/mux"
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/config"
 	"github.com/waisuan/alfred/internal/handlers"
 	"github.com/waisuan/alfred/internal/middlewares"
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/session"
 )
 
