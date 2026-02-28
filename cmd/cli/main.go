@@ -26,6 +26,7 @@ func run() error {
 	pass := flag.String("password", "", "Password")
 	date := flag.String("date", "", "Target date YYYY/MM/DD (default: 1 week from today)")
 	cutoff := flag.String("cutoff", "", "Only book slots before this time, e.g. 8:15 or 7:30 (default: 8:15)")
+	course := flag.String("course", "", "Override course selection (BRC or PLC; default: auto by day of week)")
 	statusOnly := flag.Bool("status", false, "Only show current booking status (no booking)")
 	showSlots := flag.Bool("slots", false, "Show available tee time slots for the given date (no booking)")
 	retry := flag.Bool("retry", false, "Retry loop: keep trying to book until a slot is booked or none available before cutoff")
@@ -40,6 +41,9 @@ func run() error {
 	fmt.Printf("  user:           %s\n", *user)
 	fmt.Printf("  date:           %s\n", valueOrDefault(*date, "1 week ahead"))
 	fmt.Printf("  cutoff:         %s\n", valueOrDefault(*cutoff, "8:15"))
+	if *course != "" {
+		fmt.Printf("  course:         %s\n", *course)
+	}
 	fmt.Printf("  status:         %v\n", *statusOnly)
 	fmt.Printf("  slots:          %v\n", *showSlots)
 	fmt.Printf("  retry:          %v\n", *retry)
@@ -87,12 +91,17 @@ func run() error {
 		return err
 	}
 
+	courseID := strings.TrimSpace(strings.ToUpper(*course))
+	if courseID == "" {
+		courseID = slotutil.CourseForDate(txnDate)
+	}
+
 	if *showSlots {
-		return printSlots(client, token, txnDate, cutoffTeeTime)
+		return printSlots(client, token, txnDate, courseID, cutoffTeeTime)
 	}
 
 	defer printBookingStatus(client, token, *user)
-	return runRetryLoop(client, token, txnDate, *user, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
+	return runRetryLoop(client, token, txnDate, *user, courseID, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
 }
 
 // tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", nil) on failure.
@@ -144,8 +153,7 @@ func printTeeTimeStatus(client *booker.Client, token string, slot *booker.TeeTim
 
 // runRetryLoop fetches slots and attempts to book them.
 // When retry is true, loops until a slot is booked, none remain before cutoff, or timeout is reached.
-func runRetryLoop(client *booker.Client, token, txnDate, userName, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) error {
-	courseID := slotutil.CourseForDate(txnDate)
+func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) error {
 	start := time.Now()
 
 	for round := 1; ; round++ {
@@ -193,8 +201,7 @@ func runRetryLoop(client *booker.Client, token, txnDate, userName, cutoffTeeTime
 }
 
 // printSlots fetches and prints available tee time slots for the date (no booking).
-func printSlots(client *booker.Client, token, txnDate, cutoffTeeTime string) error {
-	courseID := slotutil.CourseForDate(txnDate)
+func printSlots(client *booker.Client, token, txnDate, courseID, cutoffTeeTime string) error {
 	fmt.Printf("Available slots for %s | Course: %s\n", txnDate, courseID)
 	slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
 	if err != nil {
