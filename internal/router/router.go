@@ -37,7 +37,6 @@ func New(d *deps.Dependencies, sessStore *session.Store, client *booker.Client) 
 	api.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
 	api.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	api.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
-	api.HandleFunc("/booking/auto", bookingHandler.Auto).Methods(http.MethodPost)
 
 	historyHandler := &handlers.HistoryHandler{Service: d.Service}
 	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)

@@ -9,7 +9,6 @@ export const API_ENDPOINTS = {
   booking: '/api/v1/booking',
   bookingCheckStatus: '/api/v1/booking/check-status',
   bookingBook: '/api/v1/booking/book',
-  bookingAuto: '/api/v1/booking/auto',
   history: '/api/v1/history',
   preset: '/api/v1/preset',
 } as const;

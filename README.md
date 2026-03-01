@@ -2,6 +2,8 @@
 
 Golf tee time booking automation. Books the earliest available slot before a configurable cutoff time, with support for retry loops, scheduled execution, push notifications, and a web UI.
 
+Built and deployed on [Railway](https://railway.app).
+
 ## Architecture
 
 ```
@@ -40,10 +42,26 @@ Course is selected automatically based on the day of the week (override with `-c
 ## Prerequisites
 
 - Go 1.24.3+
+- Docker (local Postgres + integration tests)
+- Node.js 18+ and npm (Next.js frontend)
 - Club member credentials
-- PostgreSQL (required for scheduler, cleanup, and web — not needed for CLI)
-- Docker (required for running `internal/db` integration tests via Testcontainers)
-- Node.js 18+ and npm (for building the Next.js frontend)
+- A `.env.development` file at the project root (see [Configuration](#configuration))
+
+## Getting started
+
+```bash
+# Start local Postgres
+make db-up
+
+# Run DB migrations
+make db-migrate
+
+# Start the web backend (loads .env.development automatically)
+make web
+
+# Start the frontend (separate terminal)
+make ui
+```
 
 ## Build
 
@@ -83,94 +101,54 @@ Run `./bin/fore-cast -help` for the full list of flags and options.
 
 ## Scheduler (production)
 
-The scheduler reads all enabled presets from the database and runs the booking loop for each user. It's designed to run as a Railway cron job.
+The scheduler reads all enabled presets from the database and runs the booking loop for each user. Designed to run as a cron job.
 
-**Required environment variables:**
-
-| Variable | Description |
-|---|---|
-| `DATABASE_URL` | Postgres connection string (auto-injected by Railway) |
-| `ENCRYPTION_KEY` | 64-character hex string (32 bytes) for AES-256-GCM credential encryption |
-
-Generate an encryption key:
-
-```bash
-openssl rand -hex 32
-```
+Presets are processed concurrently, capped at `MAX_CONCURRENT_PRESETS` (default 5). If the number of active users outgrows this, consider increasing the limit or moving to a queue-based architecture.
 
 ## Cleanup service
 
-A separate cron job that prunes booking history older than 30 days. Only requires `DATABASE_URL`.
-
-## Web server
-
-The web backend serves the API for the Next.js frontend. Requires `DATABASE_URL` for history and auto-booker preset features.
-
-```bash
-# Run locally
-make web
-
-# With database
-DATABASE_URL=postgres://... ENCRYPTION_KEY=... make web
-```
+A separate cron job that prunes booking history older than 30 days.
 
 ## Configuration
 
-All configuration is loaded from environment variables using [env](https://github.com/caarlos0/env). You can also place a `.env.<APP_ENV>` file at the project root (loaded via [godotenv](https://github.com/joho/godotenv)).
+All configuration is loaded from environment variables using [env](https://github.com/caarlos0/env). Place a `.env.development` file at the project root for local dev (loaded automatically when `APP_ENV=development`).
+
+Example `.env.development`:
+
+```
+DATABASE_URL=postgres://forecast:forecast@localhost:5432/forecast?sslmode=disable
+ENCRYPTION_KEY=<output of: openssl rand -hex 32>
+```
 
 | Variable | Default | Description |
 |---|---|---|
 | `APP_ENV` | `development` | Environment name; loads `.env.<APP_ENV>` if present |
 | `PORT` | `8080` | HTTP server port |
-| `SESSION_SECRET` | `change-me-in-production` | Session signing secret |
 | `SESSION_TTL` | `24h` | Session time-to-live |
-| `DATABASE_URL` | *(empty)* | Postgres connection string |
-| `ENCRYPTION_KEY` | *(empty)* | 64-char hex key for AES-256-GCM |
-
-## Railway setup
-
-Railway hosts all three backend services (scheduler, cleanup, web) from the same repo. Each service runs a different binary.
-
-### 1. Create the Railway project
-
-1. Provision a **Postgres** add-on (auto-injects `DATABASE_URL` into all services).
-2. Set `ENCRYPTION_KEY` as a shared environment variable.
-
-### 2. Deploy multiple services
-
-Railway supports multiple services from the same GitHub repo. The `railway.toml` at the project root builds all binaries during the build step. Each service overrides its own `startCommand`.
-
-| Service | Start command | Cron schedule | Restart policy |
-|---|---|---|---|
-| **Scheduler** | `bin/fore-cast-scheduler` | e.g. `55 21 * * *` (9:55 PM UTC) | Never |
-| **Cleanup** | `bin/fore-cast-cleanup` | e.g. `0 4 * * *` (4:00 AM UTC daily) | Never |
-| **Web** | `bin/fore-cast-web` | *(none — always on)* | On failure |
-
-To set up each service:
-
-1. In your Railway project, click **New** → **GitHub Repo** → select this repo.
-2. In the service **Settings** tab, override the **Start Command** (e.g. `bin/fore-cast-cleanup` for the cleanup service).
-3. For cron services (scheduler, cleanup): set the **Cron Schedule** in the service settings and set **Restart Policy** to "Never".
-4. For the web service: leave the cron schedule empty and set restart policy to "On Failure".
-
-All services share the same Postgres add-on and environment variables.
+| `DATABASE_URL` | *(required)* | Postgres connection string |
+| `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
+| `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
 
 ## Database migrations
 
 Schema changes are managed by [golang-migrate](https://github.com/golang-migrate/migrate). SQL files live in `migrations/`.
 
-Migrations run automatically on startup for the scheduler, cleanup, and web services. This is safe because:
+```bash
+make db-migrate       # apply pending migrations
+make db-migrate-down  # roll back last migration
+```
 
-- `golang-migrate` tracks applied versions in a `schema_migrations` table and skips already-applied migrations.
-- The Postgres driver uses advisory locks to prevent concurrent migration runs, so multiple services starting simultaneously won't conflict.
-- For destructive schema changes, always deploy backwards-compatible migrations first, then update application code in a follow-up deploy.
+Migrations also run automatically on startup for the scheduler, cleanup, and web services.
 
 ## Development
 
 ```bash
-make fmt       # format Go code
-make lint      # run golangci-lint
-make test      # run tests (db tests require Docker)
-make check     # fmt + lint + test
-make generate  # regenerate mocks
+make db-up         # start local Postgres
+make db-down       # stop Postgres (data preserved)
+make db-reset      # nuke volume and start fresh
+make fmt           # format Go code
+make lint          # run golangci-lint
+make test          # run tests (db tests require Docker)
+make check         # fmt + lint + test
+make generate      # regenerate mocks
 ```

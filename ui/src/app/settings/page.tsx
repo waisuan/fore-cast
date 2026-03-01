@@ -19,8 +19,8 @@ interface PresetData {
   retry_interval: number;
   timeout: string;
   ntfy_topic: string;
+  enable_notifications: boolean;
   enabled: boolean;
-  has_password: boolean;
   defaults: PresetDefaults;
 }
 
@@ -29,14 +29,13 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [defaults, setDefaults] = useState<PresetDefaults | null>(null);
-  const [password, setPassword] = useState('');
   const [course, setCourse] = useState('');
   const [cutoff, setCutoff] = useState('');
   const [retryInterval, setRetryInterval] = useState(1);
   const [timeout, setTimeout] = useState('');
   const [ntfyTopic, setNtfyTopic] = useState('');
+  const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [hasPassword, setHasPassword] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -48,8 +47,8 @@ export default function SettingsPage() {
       setRetryInterval(res.retry_interval || res.defaults.retry_interval);
       setTimeout(res.timeout ?? '');
       setNtfyTopic(res.ntfy_topic ?? '');
+      setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
-      setHasPassword(res.has_password ?? false);
     } catch (e) {
       addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
     } finally {
@@ -63,24 +62,18 @@ export default function SettingsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!hasPassword && !password) {
-      addToast('Password is required for auto-booker', 'error');
-      return;
-    }
     setSaving(true);
     try {
       await api.put(API_ENDPOINTS.preset, {
-        password: password || undefined,
         course,
         cutoff,
         retry_interval: retryInterval,
         timeout,
-        ntfy_topic: ntfyTopic,
+        enable_notifications: enableNotifications,
         enabled,
       });
-      setPassword('');
-      setHasPassword(true);
       addToast('Settings saved', 'success');
+      await load();
     } catch (e) {
       addToast(e instanceof ApiError ? e.message : 'Failed to save settings', 'error');
     } finally {
@@ -107,20 +100,6 @@ export default function SettingsPage() {
         your behalf each time it runs.
       </p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <div>
-          <label htmlFor="password" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Password {hasPassword ? '(saved — leave blank to keep current)' : '*'}
-          </label>
-          <input
-            id="password"
-            type="password"
-            value={password}
-            onChange={(e) => setPassword(e.target.value)}
-            placeholder={hasPassword ? '••••••••' : 'Required'}
-            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-            autoComplete="new-password"
-          />
-        </div>
         <div>
           <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Course override
@@ -187,20 +166,50 @@ export default function SettingsPage() {
           />
         </div>
         <div>
-          <label htmlFor="ntfyTopic" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            ntfy.sh topic
-          </label>
-          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Optional. Receive push notifications on success/failure.
+          <div className="flex items-center gap-2">
+            <input
+              id="enableNotifications"
+              type="checkbox"
+              checked={enableNotifications}
+              onChange={(e) => setEnableNotifications(e.target.checked)}
+              className="h-4 w-4 rounded border-gray-300"
+            />
+            <label htmlFor="enableNotifications" className="text-sm text-gray-700 dark:text-gray-300">
+              Enable push notifications
+            </label>
+          </div>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            Receive notifications on booking success or failure via{' '}
+            <a
+              href="https://ntfy.sh"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline dark:text-blue-400"
+            >
+              ntfy.sh
+            </a>
+            . Download the{' '}
+            <a
+              href="https://ntfy.sh/#subscribe-phone"
+              target="_blank"
+              rel="noopener noreferrer"
+              className="text-blue-600 underline dark:text-blue-400"
+            >
+              ntfy app
+            </a>
+            {' '}on your device and subscribe to your topic below.
           </p>
-          <input
-            id="ntfyTopic"
-            type="text"
-            value={ntfyTopic}
-            onChange={(e) => setNtfyTopic(e.target.value)}
-            placeholder="e.g. fore-cast-prod-abc123"
-            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-          />
+          {enableNotifications && ntfyTopic && (
+            <div className="mt-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700">
+              <p className="text-xs text-gray-500 dark:text-gray-400">Your topic:</p>
+              <p className="font-mono text-sm text-gray-900 dark:text-white">{ntfyTopic}</p>
+            </div>
+          )}
+          {enableNotifications && !ntfyTopic && (
+            <p className="mt-2 text-xs text-gray-500 dark:text-gray-400">
+              A unique topic will be generated when you save.
+            </p>
+          )}
         </div>
         <div className="flex items-center gap-2">
           <input

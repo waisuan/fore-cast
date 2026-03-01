@@ -31,7 +31,7 @@ func (s *PresetHandlerSuite) SetupTest() {
 		Service:       s.mockSvc,
 		EncryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
 	}
-	s.user = &context.User{UserName: "u", APIToken: "token"}
+	s.user = &context.User{UserName: "u", APIToken: "token", Password: "secret"}
 }
 
 func (s *PresetHandlerSuite) TearDownTest() {
@@ -72,7 +72,6 @@ func (s *PresetHandlerSuite) TestGetPreset_NotFound_ReturnsDefaults() {
 	s.Assert().Equal(DefaultCutoff, resp.Cutoff)
 	s.Assert().Equal(DefaultRetryInterval, resp.RetryInterval)
 	s.Assert().Equal(DefaultTimeout, resp.Timeout)
-	s.Assert().False(resp.HasPassword)
 
 	s.Assert().Equal(DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(DefaultRetryInterval, resp.Defaults.RetryInterval)
@@ -108,12 +107,34 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal(2, resp.RetryInterval)
 	s.Assert().Equal("5m", resp.Timeout)
 	s.Assert().Equal("my-topic", resp.NtfyTopic)
+	s.Assert().True(resp.EnableNotifications)
 	s.Assert().True(resp.Enabled)
-	s.Assert().True(resp.HasPassword)
 
 	s.Assert().Equal(DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(DefaultRetryInterval, resp.Defaults.RetryInterval)
 	s.Assert().Equal(DefaultTimeout, resp.Defaults.Timeout)
+}
+
+func (s *PresetHandlerSuite) TestGetPreset_Found_NoTopic() {
+	s.mockSvc.EXPECT().
+		GetPreset("u").
+		Return(&db.Preset{
+			UserName:    "u",
+			PasswordEnc: "enc-pw",
+			Cutoff:      "8:15",
+			Timeout:     "10m",
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.GetPreset(rec, req)
+
+	s.Require().Equal(http.StatusOK, rec.Code)
+	var resp PresetResponse
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Empty(resp.NtfyTopic)
+	s.Assert().False(resp.EnableNotifications)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_DBError() {
@@ -155,7 +176,8 @@ func (s *PresetHandlerSuite) TestSavePreset_InvalidBody() {
 	s.Assert().Equal(http.StatusBadRequest, rec.Code)
 }
 
-func (s *PresetHandlerSuite) TestSavePreset_NewPassword_Success() {
+func (s *PresetHandlerSuite) TestSavePreset_Success() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
 		DoAndReturn(func(p db.Preset) error {
@@ -170,7 +192,6 @@ func (s *PresetHandlerSuite) TestSavePreset_NewPassword_Success() {
 		})
 
 	body, _ := json.Marshal(PresetRequest{
-		Password:      "secret",
 		Course:        "PLC",
 		Cutoff:        "7:30",
 		RetryInterval: 2,
@@ -189,55 +210,25 @@ func (s *PresetHandlerSuite) TestSavePreset_NewPassword_Success() {
 	s.Assert().Equal("saved", resp["status"])
 }
 
-func (s *PresetHandlerSuite) TestSavePreset_KeepsExistingPassword() {
-	s.mockSvc.EXPECT().
-		GetPreset("u").
-		Return(&db.Preset{PasswordEnc: "existing-enc"}, nil)
-	s.mockSvc.EXPECT().
-		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
-			s.Assert().Equal("existing-enc", p.PasswordEnc)
-			return nil
-		})
+func (s *PresetHandlerSuite) TestSavePreset_NoSessionPassword() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	user := &context.User{UserName: "u", APIToken: "token", Password: ""}
 
-	body, _ := json.Marshal(PresetRequest{
-		Cutoff:        "8:15",
-		RetryInterval: 1,
-		Timeout:       "10m",
-		Enabled:       true,
-	})
+	body, _ := json.Marshal(PresetRequest{Enabled: true})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	req = req.WithContext(context.WithUser(req.Context(), user))
 	rec := httptest.NewRecorder()
 	s.handler.SavePreset(rec, req)
 
-	s.Assert().Equal(http.StatusOK, rec.Code)
-}
-
-func (s *PresetHandlerSuite) TestSavePreset_NoPasswordAtAll() {
-	s.mockSvc.EXPECT().
-		GetPreset("u").
-		Return(nil, nil)
-
-	body, _ := json.Marshal(PresetRequest{
-		Cutoff:  "8:15",
-		Timeout: "10m",
-		Enabled: true,
-	})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), s.user))
-	rec := httptest.NewRecorder()
-	s.handler.SavePreset(rec, req)
-
-	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_NoEncryptionKey() {
 	s.handler.EncryptionKey = ""
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 
-	body, _ := json.Marshal(PresetRequest{Password: "secret"})
+	body, _ := json.Marshal(PresetRequest{Enabled: true})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(context.WithUser(req.Context(), s.user))
@@ -248,14 +239,14 @@ func (s *PresetHandlerSuite) TestSavePreset_NoEncryptionKey() {
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_DBError() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
 		Return(errors.New("db down"))
 
 	body, _ := json.Marshal(PresetRequest{
-		Password: "secret",
-		Cutoff:   "8:15",
-		Timeout:  "10m",
+		Cutoff:  "8:15",
+		Timeout: "10m",
 	})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -267,6 +258,7 @@ func (s *PresetHandlerSuite) TestSavePreset_DBError() {
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
 		DoAndReturn(func(p db.Preset) error {
@@ -276,7 +268,81 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 			return nil
 		})
 
-	body, _ := json.Marshal(PresetRequest{Password: "secret"})
+	body, _ := json.Marshal(PresetRequest{})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_GeneratesTopic() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p db.Preset) error {
+			s.Assert().True(p.NtfyTopic.Valid)
+			s.Assert().Contains(p.NtfyTopic.String, "fore-cast-u-")
+			return nil
+		})
+
+	enable := true
+	body, _ := json.Marshal(PresetRequest{
+		EnableNotifications: &enable,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistingTopic() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(&db.Preset{
+		PasswordEnc: "enc-pw",
+		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
+	}, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p db.Preset) error {
+			s.Assert().Equal("fore-cast-u-existing", p.NtfyTopic.String)
+			return nil
+		})
+
+	enable := true
+	body, _ := json.Marshal(PresetRequest{
+		EnableNotifications: &enable,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(&db.Preset{
+		PasswordEnc: "enc-pw",
+		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
+	}, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p db.Preset) error {
+			s.Assert().False(p.NtfyTopic.Valid)
+			s.Assert().Empty(p.NtfyTopic.String)
+			return nil
+		})
+
+	disable := false
+	body, _ := json.Marshal(PresetRequest{
+		EnableNotifications: &disable,
+	})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(context.WithUser(req.Context(), s.user))

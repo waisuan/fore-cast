@@ -49,7 +49,7 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusUnauthorized)
 		return
 	}
-	sid, err := h.Store.Create(token, req.Username)
+	sid, err := h.Store.Create(token, req.Username, req.Password)
 	if err != nil {
 		http.Error(w, "session error", http.StatusInternalServerError)
 		return

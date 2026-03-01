@@ -15,8 +15,8 @@ type Dependencies struct {
 }
 
 // Initialise loads configuration, opens a Postgres connection (with
-// migrations), and creates the db.Service layer. DATABASE_URL is required.
-// Pass nil for migrationsFS to skip migrations entirely.
+// migrations), and creates the db.Service layer. Both DATABASE_URL and
+// a valid migrationsFS are required.
 func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 	cfg, err := LoadConfig()
 	if err != nil {

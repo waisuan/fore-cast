@@ -22,14 +22,16 @@ type Config struct {
 	IdleTimeout  time.Duration `env:"HTTP_IDLE_TIMEOUT" envDefault:"60s"`
 
 	// Session
-	SessionSecret string        `env:"SESSION_SECRET" envDefault:"change-me-in-production"`
-	SessionTTL    time.Duration `env:"SESSION_TTL" envDefault:"24h"`
+	SessionTTL time.Duration `env:"SESSION_TTL" envDefault:"24h"`
 
 	// Postgres
 	DatabaseURL string `env:"DATABASE_URL"`
 
 	// Encryption (for stored credentials)
 	EncryptionKey string `env:"ENCRYPTION_KEY"`
+
+	// Scheduler
+	MaxConcurrentPresets int `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
 }
 
 // LoadConfig loads configuration from environment variables and optional .env files.

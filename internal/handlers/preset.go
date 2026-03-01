@@ -8,6 +8,7 @@ import (
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/db"
+	"github.com/waisuan/alfred/internal/notify"
 )
 
 const (
@@ -32,26 +33,25 @@ type PresetDefaults struct {
 
 // PresetResponse is the JSON response for GET /api/v1/preset.
 type PresetResponse struct {
-	UserName      string         `json:"user_name"`
-	Course        string         `json:"course"`
-	Cutoff        string         `json:"cutoff"`
-	RetryInterval int            `json:"retry_interval"`
-	Timeout       string         `json:"timeout"`
-	NtfyTopic     string         `json:"ntfy_topic"`
-	Enabled       bool           `json:"enabled"`
-	HasPassword   bool           `json:"has_password"`
-	Defaults      PresetDefaults `json:"defaults"`
+	UserName            string         `json:"user_name"`
+	Course              string         `json:"course"`
+	Cutoff              string         `json:"cutoff"`
+	RetryInterval       int            `json:"retry_interval"`
+	Timeout             string         `json:"timeout"`
+	NtfyTopic           string         `json:"ntfy_topic"`
+	EnableNotifications bool           `json:"enable_notifications"`
+	Enabled             bool           `json:"enabled"`
+	Defaults            PresetDefaults `json:"defaults"`
 }
 
 // PresetRequest is the JSON body for PUT /api/v1/preset.
 type PresetRequest struct {
-	Password      string `json:"password"`
-	Course        string `json:"course"`
-	Cutoff        string `json:"cutoff"`
-	RetryInterval int    `json:"retry_interval"`
-	Timeout       string `json:"timeout"`
-	NtfyTopic     string `json:"ntfy_topic"`
-	Enabled       bool   `json:"enabled"`
+	Course              string `json:"course"`
+	Cutoff              string `json:"cutoff"`
+	RetryInterval       int    `json:"retry_interval"`
+	Timeout             string `json:"timeout"`
+	EnableNotifications *bool  `json:"enable_notifications"`
+	Enabled             bool   `json:"enabled"`
 }
 
 // GetPreset handles GET /api/v1/preset.
@@ -91,8 +91,8 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		resp.RetryInterval = preset.RetryInterval
 		resp.Timeout = preset.Timeout
 		resp.NtfyTopic = preset.NtfyTopic.String
+		resp.EnableNotifications = preset.NtfyTopic.Valid && preset.NtfyTopic.String != ""
 		resp.Enabled = preset.Enabled
-		resp.HasPassword = preset.PasswordEnc != ""
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -116,33 +116,33 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	existing, err := h.Service.GetPreset(u.UserName)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+
 	var passwordEnc string
-	if req.Password != "" {
+	if existing != nil && existing.PasswordEnc != "" {
+		passwordEnc = existing.PasswordEnc
+	} else {
+		if u.Password == "" {
+			http.Error(w, "session missing password — please log in again", http.StatusUnauthorized)
+			return
+		}
 		if h.EncryptionKey == "" {
 			http.Error(w, "encryption key not configured", http.StatusInternalServerError)
 			return
 		}
-		enc, err := crypto.Encrypt(req.Password, h.EncryptionKey)
+		enc, err := crypto.Encrypt(u.Password, h.EncryptionKey)
 		if err != nil {
 			http.Error(w, "failed to encrypt password", http.StatusInternalServerError)
 			return
 		}
 		passwordEnc = enc
-	} else {
-		existing, err := h.Service.GetPreset(u.UserName)
-		if err != nil {
-			http.Error(w, err.Error(), http.StatusInternalServerError)
-			return
-		}
-		if existing != nil {
-			passwordEnc = existing.PasswordEnc
-		}
 	}
 
-	if passwordEnc == "" {
-		http.Error(w, "password is required for auto-booker preset", http.StatusBadRequest)
-		return
-	}
+	ntfyTopic := resolveNtfyTopic(existing, u.UserName, req.EnableNotifications)
 
 	preset := db.Preset{
 		UserName:      u.UserName,
@@ -151,7 +151,7 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		Cutoff:        req.Cutoff,
 		RetryInterval: req.RetryInterval,
 		Timeout:       req.Timeout,
-		NtfyTopic:     sql.NullString{String: req.NtfyTopic, Valid: req.NtfyTopic != ""},
+		NtfyTopic:     ntfyTopic,
 		Enabled:       req.Enabled,
 	}
 	if preset.Cutoff == "" {
@@ -171,4 +171,28 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
+}
+
+// resolveNtfyTopic determines the ntfy topic based on the user's notification
+// preference and their existing preset. If enabled and no topic exists yet,
+// a new one is generated. If disabled, the topic is cleared. If the flag is
+// nil (not sent), the existing topic is preserved.
+func resolveNtfyTopic(existing *db.Preset, userName string, enable *bool) sql.NullString {
+	if enable == nil {
+		if existing != nil {
+			return existing.NtfyTopic
+		}
+		return sql.NullString{}
+	}
+
+	if !*enable {
+		return sql.NullString{}
+	}
+
+	if existing != nil && existing.NtfyTopic.Valid && existing.NtfyTopic.String != "" {
+		return existing.NtfyTopic
+	}
+
+	topic := notify.GenerateTopic(userName)
+	return sql.NullString{String: topic, Valid: true}
 }

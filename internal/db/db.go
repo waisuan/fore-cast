@@ -74,7 +74,7 @@ func (s *Service) GetAttempts(userName string, limit int) ([]Attempt, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var attempts []Attempt
 	for rows.Next() {
@@ -147,7 +147,7 @@ func (s *Service) GetEnabledPresets() ([]Preset, error) {
 	if err != nil {
 		return nil, err
 	}
-	defer rows.Close()
+	defer func() { _ = rows.Close() }()
 
 	var presets []Preset
 	for rows.Next() {

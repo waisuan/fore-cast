@@ -31,6 +31,16 @@ func TestSend_Success(t *testing.T) {
 	assert.Equal(t, "test message", receivedBody)
 }
 
+func TestGenerateTopic(t *testing.T) {
+	t.Parallel()
+	topic := GenerateTopic("M8110")
+	assert.Contains(t, topic, "fore-cast-M8110-")
+	assert.Len(t, topic, len("fore-cast-M8110-")+16) // 8 bytes = 16 hex chars
+
+	topic2 := GenerateTopic("M8110")
+	assert.NotEqual(t, topic, topic2, "topics should be unique")
+}
+
 func TestSend_ServerError(t *testing.T) {
 	t.Parallel()
 	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {

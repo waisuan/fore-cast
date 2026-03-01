@@ -14,8 +14,6 @@ import (
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
-const defaultRetryIntervalSec = 1
-
 func main() {
 	if err := run(); err != nil {
 		fmt.Fprintln(os.Stderr, err)
@@ -32,7 +30,7 @@ func run() error {
 	statusOnly := flag.Bool("status", false, "Only show current booking status (no booking)")
 	showSlots := flag.Bool("slots", false, "Show available tee time slots for the given date (no booking)")
 	retry := flag.Bool("retry", false, "Retry loop: keep trying to book until a slot is booked or none available before cutoff")
-	retryInterval := flag.Int("retry-interval", defaultRetryIntervalSec, "Seconds between rounds when using -retry")
+	retryInterval := flag.Int("retry-interval", 1, "Seconds between rounds when using -retry")
 	timeout := flag.Duration("timeout", 10*time.Minute, "Max time to spend retrying (0 = no limit)")
 	runAt := flag.String("at", "", "Run at this time today (24h, e.g. 22:00 for 10 PM); waits then runs with all other flags")
 	debug := flag.Bool("debug", false, "Print booking request/response body for troubleshooting")
@@ -122,9 +120,9 @@ func run() error {
 
 	result, err := runner.Run(cfg, client)
 	if err != nil {
-		notify.Send(*ntfy, "FAILED: "+err.Error())
+		_ = notify.Send(*ntfy, "FAILED: "+err.Error())
 	} else if result.Message != "" {
-		notify.Send(*ntfy, result.Message)
+		_ = notify.Send(*ntfy, result.Message)
 	}
 	return err
 }

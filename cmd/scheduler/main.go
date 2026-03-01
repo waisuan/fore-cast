@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"log"
 	"strings"
+	"sync"
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
@@ -16,6 +17,7 @@ import (
 	"github.com/waisuan/alfred/internal/slotutil"
 	"github.com/waisuan/alfred/migrations"
 )
+
 
 func main() {
 	if err := run(); err != nil {
@@ -44,14 +46,24 @@ func run() error {
 	}
 
 	client := booker.NewClient()
+	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
+	var wg sync.WaitGroup
 
 	for _, preset := range presets {
-		log.Printf("processing preset for user %s", preset.UserName)
-		if err := processPreset(client, d.Service, preset, d.Config.EncryptionKey); err != nil {
-			log.Printf("user %s: %v", preset.UserName, err)
-		}
+		wg.Add(1)
+		go func(p db.Preset) {
+			defer wg.Done()
+			sem <- struct{}{}
+			defer func() { <-sem }()
+
+			log.Printf("processing preset for user %s", p.UserName)
+			if err := processPreset(client, d.Service, p, d.Config.EncryptionKey); err != nil {
+				log.Printf("user %s: %v", p.UserName, err)
+			}
+		}(preset)
 	}
 
+	wg.Wait()
 	return nil
 }
 

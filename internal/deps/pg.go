@@ -12,8 +12,8 @@ import (
 )
 
 // NewPostgresClient opens a Postgres connection, pings it, and runs
-// any pending migrations from the given filesystem. Returns the raw
-// *sql.DB so callers (services, repos) can use it directly.
+// pending migrations from the given filesystem. Both DATABASE_URL and
+// migrationsFS are required. Returns the raw *sql.DB.
 func NewPostgresClient(cfg *Config, migrationsFS fs.FS) (*sql.DB, error) {
 	if cfg.DatabaseURL == "" {
 		return nil, fmt.Errorf("DATABASE_URL is required")
@@ -27,10 +27,8 @@ func NewPostgresClient(cfg *Config, migrationsFS fs.FS) (*sql.DB, error) {
 		return nil, fmt.Errorf("pg: ping: %w", err)
 	}
 
-	if migrationsFS != nil {
-		if err := runMigrations(conn, migrationsFS); err != nil {
-			return nil, fmt.Errorf("pg: migrate: %w", err)
-		}
+	if err := runMigrations(conn, migrationsFS); err != nil {
+		return nil, fmt.Errorf("pg: migrate: %w", err)
 	}
 
 	return conn, nil

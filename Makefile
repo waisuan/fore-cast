@@ -1,3 +1,6 @@
+# Load local dev config (.env.development is the single source of truth)
+-include .env.development
+
 # Build binaries into bin/
 BINARY := bin/fore-cast
 WEB_BINARY := bin/fore-cast-web
@@ -7,8 +10,9 @@ CMD := ./cmd/cli
 CMD_WEB := ./cmd/web
 CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
+MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build build-web build-scheduler build-cleanup build-all cli web fmt lint test check generate ui ui-install ui-build ui-lint
+.PHONY: build build-web build-scheduler build-cleanup build-all cli web fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down ui ui-install ui-build ui-lint
 build:
 	@mkdir -p bin
 	go build -o $(BINARY) $(CMD)
@@ -31,9 +35,9 @@ build-all: build build-web build-scheduler build-cleanup
 cli:
 	go run $(CMD)
 
-# Run the web server
+# Run the web server (loads .env.development via APP_ENV)
 web:
-	go run $(CMD_WEB)
+	APP_ENV=development go run $(CMD_WEB)
 
 # Format Go code
 fmt:
@@ -53,6 +57,24 @@ check: fmt lint test
 # Regenerate mocks. No global mockgen install required.
 generate:
 	go generate ./...
+
+# Local Postgres via Docker
+db-up:
+	docker compose up -d postgres
+
+db-down:
+	docker compose down
+
+db-reset:
+	docker compose down -v
+	docker compose up -d postgres
+
+# Run pending DB migrations against the local Postgres
+db-migrate:
+	$(MIGRATE) -path migrations -database "$(DATABASE_URL)" up
+
+db-migrate-down:
+	$(MIGRATE) -path migrations -database "$(DATABASE_URL)" down 1
 
 # UI: install deps, dev server, build, lint
 ui-install:

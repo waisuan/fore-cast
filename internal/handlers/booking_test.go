@@ -165,43 +165,6 @@ func (s *BookingHandlerSuite) TestBook_BookReturnsFailure() {
 	s.Assert().Equal(http.StatusConflict, rec.Code)
 }
 
-func (s *BookingHandlerSuite) TestAuto_DateRequired() {
-	body, _ := json.Marshal(AutoRequest{})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/auto", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), s.user))
-	rec := httptest.NewRecorder()
-	s.handler.Auto(rec, req)
-	s.Assert().Equal(http.StatusBadRequest, rec.Code)
-}
-
-func (s *BookingHandlerSuite) TestAuto_SuccessOnFirstSlot() {
-	slots := []booker.TeeTimeSlot{
-		{CourseID: "PLC", TeeTime: "07:00", Session: "1", TeeBox: booker.StringOrNumber("1"), TxnDate: "2026/02/25"},
-	}
-	s.mockBooker.EXPECT().
-		GetTeeTimeSlots("token", "PLC", "2026/02/25").
-		Return(slots, nil)
-	s.mockBooker.EXPECT().
-		CheckTeeTimeStatus("token", gomock.Any()).
-		Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
-	s.mockBooker.EXPECT().
-		BookTeeTime("token", gomock.Any(), false).
-		Return(&booker.BookingResponse{Status: true, Result: []booker.BookingResultItem{{Status: true, BookingID: "A1"}}}, nil)
-
-	body, _ := json.Marshal(AutoRequest{Date: "2026/02/25", Cutoff: "8:15", Retries: 1})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/auto", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), s.user))
-	rec := httptest.NewRecorder()
-	s.handler.Auto(rec, req)
-
-	s.Require().Equal(http.StatusOK, rec.Code)
-	var out map[string]string
-	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&out))
-	s.Assert().Equal("A1", out["bookingID"])
-}
-
 func TestBookingHandlerSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(BookingHandlerSuite))

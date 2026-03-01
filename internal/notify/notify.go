@@ -1,6 +1,8 @@
 package notify
 
 import (
+	"crypto/rand"
+	"encoding/hex"
 	"fmt"
 	"net/http"
 	"strings"
@@ -13,6 +15,13 @@ func Send(topic, message string) error {
 		return nil
 	}
 	return sendToURL("https://ntfy.sh/"+topic, message)
+}
+
+// GenerateTopic creates a unique ntfy topic for the given user.
+func GenerateTopic(userName string) string {
+	b := make([]byte, 8)
+	_, _ = rand.Read(b)
+	return fmt.Sprintf("fore-cast-%s-%s", userName, hex.EncodeToString(b))
 }
 
 func sendToURL(url, message string) error {
