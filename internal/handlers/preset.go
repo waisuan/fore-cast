@@ -7,19 +7,13 @@ import (
 
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/crypto"
-	"github.com/waisuan/alfred/internal/db"
 	"github.com/waisuan/alfred/internal/notify"
-)
-
-const (
-	DefaultCutoff        = "8:15"
-	DefaultRetryInterval = 1
-	DefaultTimeout       = "10m"
+	"github.com/waisuan/alfred/internal/preset"
 )
 
 // PresetHandler handles /api/v1/preset endpoints.
 type PresetHandler struct {
-	Service       db.ServiceInterface
+	Service       preset.Service
 	EncryptionKey string
 }
 
@@ -42,6 +36,9 @@ type PresetResponse struct {
 	EnableNotifications bool           `json:"enable_notifications"`
 	Enabled             bool           `json:"enabled"`
 	Defaults            PresetDefaults `json:"defaults"`
+	LastRunStatus       string         `json:"last_run_status"`
+	LastRunMessage      string         `json:"last_run_message"`
+	LastRunAt           *string        `json:"last_run_at"`
 }
 
 // PresetRequest is the JSON body for PUT /api/v1/preset.
@@ -67,32 +64,38 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 	}
 	defaults := PresetDefaults{
 		Course:        "Auto (by day of week)",
-		Cutoff:        DefaultCutoff,
-		RetryInterval: DefaultRetryInterval,
-		Timeout:       DefaultTimeout,
+		Cutoff:        preset.DefaultCutoff,
+		RetryInterval: preset.DefaultRetryInterval,
+		Timeout:       preset.DefaultTimeout,
 	}
 
-	preset, err := h.Service.GetPreset(u.UserName)
+	existing, err := h.Service.GetPreset(u.UserName)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 
-	resp := PresetResponse{Defaults: defaults}
-	if preset == nil {
+	resp := PresetResponse{Defaults: defaults, LastRunStatus: string(preset.RunStatusIdle)}
+	if existing == nil {
 		resp.UserName = u.UserName
-		resp.Cutoff = DefaultCutoff
-		resp.RetryInterval = DefaultRetryInterval
-		resp.Timeout = DefaultTimeout
+		resp.Cutoff = preset.DefaultCutoff
+		resp.RetryInterval = preset.DefaultRetryInterval
+		resp.Timeout = preset.DefaultTimeout
 	} else {
-		resp.UserName = preset.UserName
-		resp.Course = preset.Course.String
-		resp.Cutoff = preset.Cutoff
-		resp.RetryInterval = preset.RetryInterval
-		resp.Timeout = preset.Timeout
-		resp.NtfyTopic = preset.NtfyTopic.String
-		resp.EnableNotifications = preset.NtfyTopic.Valid && preset.NtfyTopic.String != ""
-		resp.Enabled = preset.Enabled
+		resp.UserName = existing.UserName
+		resp.Course = existing.Course.String
+		resp.Cutoff = existing.Cutoff
+		resp.RetryInterval = existing.RetryInterval
+		resp.Timeout = existing.Timeout
+		resp.NtfyTopic = existing.NtfyTopic.String
+		resp.EnableNotifications = existing.NtfyTopic.Valid && existing.NtfyTopic.String != ""
+		resp.Enabled = existing.Enabled
+		resp.LastRunStatus = existing.LastRunStatus
+		resp.LastRunMessage = existing.LastRunMessage
+		if existing.LastRunAt.Valid {
+			t := existing.LastRunAt.Time.Format("2006-01-02T15:04:05Z07:00")
+			resp.LastRunAt = &t
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -110,9 +113,24 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
+	if u.Password == "" {
+		http.Error(w, "session missing password — please log in again", http.StatusUnauthorized)
+		return
+	}
+	if h.EncryptionKey == "" {
+		http.Error(w, "encryption key not configured", http.StatusInternalServerError)
+		return
+	}
+
 	var req PresetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+
+	passwordEnc, encErr := crypto.Encrypt(u.Password, h.EncryptionKey)
+	if encErr != nil {
+		http.Error(w, "failed to encrypt password", http.StatusInternalServerError)
 		return
 	}
 
@@ -122,29 +140,9 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	var passwordEnc string
-	if existing != nil && existing.PasswordEnc != "" {
-		passwordEnc = existing.PasswordEnc
-	} else {
-		if u.Password == "" {
-			http.Error(w, "session missing password — please log in again", http.StatusUnauthorized)
-			return
-		}
-		if h.EncryptionKey == "" {
-			http.Error(w, "encryption key not configured", http.StatusInternalServerError)
-			return
-		}
-		enc, err := crypto.Encrypt(u.Password, h.EncryptionKey)
-		if err != nil {
-			http.Error(w, "failed to encrypt password", http.StatusInternalServerError)
-			return
-		}
-		passwordEnc = enc
-	}
-
 	ntfyTopic := resolveNtfyTopic(existing, u.UserName, req.EnableNotifications)
 
-	preset := db.Preset{
+	p := preset.Preset{
 		UserName:      u.UserName,
 		PasswordEnc:   passwordEnc,
 		Course:        sql.NullString{String: req.Course, Valid: req.Course != ""},
@@ -154,17 +152,17 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		NtfyTopic:     ntfyTopic,
 		Enabled:       req.Enabled,
 	}
-	if preset.Cutoff == "" {
-		preset.Cutoff = DefaultCutoff
+	if p.Cutoff == "" {
+		p.Cutoff = preset.DefaultCutoff
 	}
-	if preset.RetryInterval < 1 {
-		preset.RetryInterval = DefaultRetryInterval
+	if p.RetryInterval < 1 {
+		p.RetryInterval = preset.DefaultRetryInterval
 	}
-	if preset.Timeout == "" {
-		preset.Timeout = DefaultTimeout
+	if p.Timeout == "" {
+		p.Timeout = preset.DefaultTimeout
 	}
 
-	if err := h.Service.UpsertPreset(preset); err != nil {
+	if err := h.Service.UpsertPreset(p); err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
@@ -177,7 +175,7 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 // preference and their existing preset. If enabled and no topic exists yet,
 // a new one is generated. If disabled, the topic is cleared. If the flag is
 // nil (not sent), the existing topic is preserved.
-func resolveNtfyTopic(existing *db.Preset, userName string, enable *bool) sql.NullString {
+func resolveNtfyTopic(existing *preset.Preset, userName string, enable *bool) sql.NullString {
 	if enable == nil {
 		if existing != nil {
 			return existing.NtfyTopic

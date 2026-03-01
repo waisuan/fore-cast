@@ -10,14 +10,14 @@ import (
 
 	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/crypto"
-	"github.com/waisuan/alfred/internal/db"
 	"github.com/waisuan/alfred/internal/deps"
+	"github.com/waisuan/alfred/internal/history"
 	"github.com/waisuan/alfred/internal/notify"
+	"github.com/waisuan/alfred/internal/preset"
 	"github.com/waisuan/alfred/internal/runner"
 	"github.com/waisuan/alfred/internal/slotutil"
 	"github.com/waisuan/alfred/migrations"
 )
-
 
 func main() {
 	if err := run(); err != nil {
@@ -36,7 +36,7 @@ func run() error {
 		return fmt.Errorf("ENCRYPTION_KEY is required")
 	}
 
-	presets, err := d.Service.GetEnabledPresets()
+	presets, err := d.Preset.GetEnabledPresets()
 	if err != nil {
 		return fmt.Errorf("get presets: %w", err)
 	}
@@ -49,81 +49,89 @@ func run() error {
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
 	var wg sync.WaitGroup
 
-	for _, preset := range presets {
+	for _, p := range presets {
 		wg.Add(1)
-		go func(p db.Preset) {
+		go func(p preset.Preset) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
 			log.Printf("processing preset for user %s", p.UserName)
-			if err := processPreset(client, d.Service, p, d.Config.EncryptionKey); err != nil {
+			if err := processPreset(client, d, p); err != nil {
 				log.Printf("user %s: %v", p.UserName, err)
 			}
-		}(preset)
+		}(p)
 	}
 
 	wg.Wait()
 	return nil
 }
 
-func processPreset(client *booker.Client, svc db.ServiceInterface, preset db.Preset, encryptionKey string) error {
-	password, err := crypto.Decrypt(preset.PasswordEnc, encryptionKey)
+func processPreset(client *booker.Client, d *deps.Dependencies, p preset.Preset) error {
+	if err := d.Preset.UpdatePresetRunStatus(p.UserName, preset.RunStatusRunning, ""); err != nil {
+		log.Printf("user %s: failed to set running status: %v", p.UserName, err)
+	}
+
+	password, err := crypto.Decrypt(p.PasswordEnc, d.Config.EncryptionKey)
 	if err != nil {
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "decrypt password: "+err.Error())
 		return fmt.Errorf("decrypt password: %w", err)
 	}
 
-	token, err := client.Login(preset.UserName, password)
+	token, err := client.Login(p.UserName, password)
 	if err != nil {
-		logAttempt(svc, preset, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
-		notifyUser(preset, "FAILED: login: "+err.Error())
+		logAttempt(d.History, p, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
+		notifyUser(p, "FAILED: login: "+err.Error())
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "login: "+err.Error())
 		return fmt.Errorf("login: %w", err)
 	}
 
 	txnDate := slotutil.DateOneWeekAhead()
-	courseID := strings.TrimSpace(strings.ToUpper(preset.Course.String))
+	courseID := strings.TrimSpace(strings.ToUpper(p.Course.String))
 	if courseID == "" {
 		courseID = slotutil.CourseForDate(txnDate)
 	}
 
-	cutoffTeeTime, err := slotutil.ParseCutoff(preset.Cutoff)
+	cutoffTeeTime, err := slotutil.ParseCutoff(p.Cutoff)
 	if err != nil {
 		return fmt.Errorf("parse cutoff: %w", err)
 	}
 
-	timeout, err := time.ParseDuration(preset.Timeout)
+	timeout, err := time.ParseDuration(p.Timeout)
 	if err != nil {
 		timeout = 10 * time.Minute
 	}
 
 	cfg := runner.Config{
-		UserName:      preset.UserName,
+		UserName:      p.UserName,
 		Token:         token,
 		TxnDate:       txnDate,
 		CourseID:      courseID,
 		CutoffTeeTime: cutoffTeeTime,
-		RetryInterval: preset.RetryInterval,
+		RetryInterval: p.RetryInterval,
 		Retry:         true,
 		Debug:         false,
 		Timeout:       timeout,
 	}
 
 	result, err := runner.Run(cfg, client)
-	logAttempt(svc, preset, result)
+	logAttempt(d.History, p, result)
 
 	if err != nil {
-		notifyUser(preset, "FAILED: "+err.Error())
+		notifyUser(p, "FAILED: "+err.Error())
+		updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), err.Error())
 		return err
 	}
 	if result.Message != "" {
-		notifyUser(preset, result.Message)
+		notifyUser(p, result.Message)
 	}
+	updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), result.Message)
 	return nil
 }
 
-func logAttempt(svc db.ServiceInterface, preset db.Preset, result runner.Result) {
-	attempt := db.Attempt{
-		UserName:  preset.UserName,
+func logAttempt(svc history.Service, p preset.Preset, result runner.Result) {
+	attempt := history.Attempt{
+		UserName:  p.UserName,
 		CourseID:  result.CourseID,
 		TxnDate:   slotutil.DateOneWeekAhead(),
 		TeeTime:   sql.NullString{String: result.TeeTime, Valid: result.TeeTime != ""},
@@ -133,18 +141,33 @@ func logAttempt(svc db.ServiceInterface, preset db.Preset, result runner.Result)
 		Message:   result.Message,
 	}
 	if err := svc.LogAttempt(attempt); err != nil {
-		log.Printf("failed to log attempt for %s: %v", preset.UserName, err)
+		log.Printf("failed to log attempt for %s: %v", p.UserName, err)
 	}
 }
 
-func notifyUser(preset db.Preset, msg string) {
-	topic := preset.NtfyTopic.String
-	if !preset.NtfyTopic.Valid || topic == "" {
+func runStatusFromResult(s runner.Status) preset.RunStatus {
+	switch s {
+	case runner.StatusSuccess:
+		return preset.RunStatusSuccess
+	default:
+		return preset.RunStatusFailed
+	}
+}
+
+func updateRunDone(svc preset.Service, userName string, status preset.RunStatus, message string) {
+	if err := svc.UpdatePresetRunStatus(userName, status, message); err != nil {
+		log.Printf("user %s: failed to update run status: %v", userName, err)
+	}
+}
+
+func notifyUser(p preset.Preset, msg string) {
+	topic := p.NtfyTopic.String
+	if !p.NtfyTopic.Valid || topic == "" {
 		return
 	}
 	if err := notify.Send(topic, msg); err != nil {
-		log.Printf("ntfy error for %s: %v", preset.UserName, err)
+		log.Printf("ntfy error for %s: %v", p.UserName, err)
 	} else {
-		log.Printf("ntfy: notified topic %s for user %s", topic, preset.UserName)
+		log.Printf("ntfy: notified topic %s for user %s", topic, p.UserName)
 	}
 }

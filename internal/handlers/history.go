@@ -5,12 +5,12 @@ import (
 	"net/http"
 
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/db"
+	"github.com/waisuan/alfred/internal/history"
 )
 
 // HistoryHandler handles GET /api/v1/history.
 type HistoryHandler struct {
-	Service db.ServiceInterface
+	Service history.Service
 }
 
 // HistoryResponse is the JSON response for the history endpoint.

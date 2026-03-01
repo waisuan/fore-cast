@@ -12,20 +12,20 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/db"
+	"github.com/waisuan/alfred/internal/history"
 )
 
 type HistoryHandlerSuite struct {
 	suite.Suite
 	ctrl    *gomock.Controller
-	mockSvc *db.MockServiceInterface
+	mockSvc *history.MockService
 	handler *HistoryHandler
 	user    *context.User
 }
 
 func (s *HistoryHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockSvc = db.NewMockServiceInterface(s.ctrl)
+	s.mockSvc = history.NewMockService(s.ctrl)
 	s.handler = &HistoryHandler{Service: s.mockSvc}
 	s.user = &context.User{UserName: "u", APIToken: "token"}
 }
@@ -50,7 +50,7 @@ func (s *HistoryHandlerSuite) TestGetHistory_MethodNotAllowed() {
 }
 
 func (s *HistoryHandlerSuite) TestGetHistory_Success() {
-	attempts := []db.Attempt{
+	attempts := []history.Attempt{
 		{
 			ID:        1,
 			CreatedAt: time.Date(2026, 3, 1, 10, 0, 0, 0, time.UTC),

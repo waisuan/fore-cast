@@ -4,32 +4,6 @@ Golf tee time booking automation. Books the earliest available slot before a con
 
 Built and deployed on [Railway](https://railway.app).
 
-## Architecture
-
-```
-cmd/scheduler/  – production entry point, DB-driven (Railway cron)
-cmd/cleanup/    – DB housekeeping (Railway cron), prunes stale records
-cmd/cli/        – debug/scripting tool, flag-driven (no DB)
-cmd/web/        – web backend + API server
-
-internal/
-  booker/       – external booking API client
-  slotutil/     – slot filtering, date helpers
-  runner/       – core booking loop (retry, slot selection, attempt)
-  notify/       – ntfy.sh push notifications
-  crypto/       – AES-256-GCM encrypt/decrypt for credentials
-  db/           – Postgres service layer (interface + mock)
-  deps/         – dependency injection (config, Postgres client, service wiring)
-  handlers/     – HTTP handlers (bookings, history, presets)
-  router/       – HTTP router
-  session/      – in-memory session store
-  context/      – request context helpers
-  middlewares/  – CORS, session auth
-
-migrations/     – versioned SQL migration files (golang-migrate)
-ui/             – Next.js frontend
-```
-
 ## How it works
 
 1. Logs in with your club member credentials.
@@ -104,6 +78,8 @@ Run `./bin/fore-cast -help` for the full list of flags and options.
 The scheduler reads all enabled presets from the database and runs the booking loop for each user. Designed to run as a cron job.
 
 Presets are processed concurrently, capped at `MAX_CONCURRENT_PRESETS` (default 5). If the number of active users outgrows this, consider increasing the limit or moving to a queue-based architecture.
+
+Run status (`running`, `success`, `failed`) is written back to the preset row so the web UI can display progress. Push notification topics are auto-generated per user when enabled via the settings page.
 
 ## Cleanup service
 

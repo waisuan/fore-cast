@@ -13,20 +13,20 @@ import (
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/db"
+	"github.com/waisuan/alfred/internal/preset"
 )
 
 type PresetHandlerSuite struct {
 	suite.Suite
 	ctrl    *gomock.Controller
-	mockSvc *db.MockServiceInterface
+	mockSvc *preset.MockService
 	handler *PresetHandler
 	user    *context.User
 }
 
 func (s *PresetHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockSvc = db.NewMockServiceInterface(s.ctrl)
+	s.mockSvc = preset.NewMockService(s.ctrl)
 	s.handler = &PresetHandler{
 		Service:       s.mockSvc,
 		EncryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
@@ -69,19 +69,19 @@ func (s *PresetHandlerSuite) TestGetPreset_NotFound_ReturnsDefaults() {
 	var resp PresetResponse
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
 	s.Assert().Equal("u", resp.UserName)
-	s.Assert().Equal(DefaultCutoff, resp.Cutoff)
-	s.Assert().Equal(DefaultRetryInterval, resp.RetryInterval)
-	s.Assert().Equal(DefaultTimeout, resp.Timeout)
+	s.Assert().Equal(preset.DefaultCutoff, resp.Cutoff)
+	s.Assert().Equal(preset.DefaultRetryInterval, resp.RetryInterval)
+	s.Assert().Equal(preset.DefaultTimeout, resp.Timeout)
 
-	s.Assert().Equal(DefaultCutoff, resp.Defaults.Cutoff)
-	s.Assert().Equal(DefaultRetryInterval, resp.Defaults.RetryInterval)
-	s.Assert().Equal(DefaultTimeout, resp.Defaults.Timeout)
+	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
+	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)
+	s.Assert().Equal(preset.DefaultTimeout, resp.Defaults.Timeout)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.mockSvc.EXPECT().
 		GetPreset("u").
-		Return(&db.Preset{
+		Return(&preset.Preset{
 			UserName:      "u",
 			PasswordEnc:   "enc-pw",
 			Course:        sql.NullString{String: "PLC", Valid: true},
@@ -110,15 +110,15 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().True(resp.EnableNotifications)
 	s.Assert().True(resp.Enabled)
 
-	s.Assert().Equal(DefaultCutoff, resp.Defaults.Cutoff)
-	s.Assert().Equal(DefaultRetryInterval, resp.Defaults.RetryInterval)
-	s.Assert().Equal(DefaultTimeout, resp.Defaults.Timeout)
+	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
+	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)
+	s.Assert().Equal(preset.DefaultTimeout, resp.Defaults.Timeout)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_Found_NoTopic() {
 	s.mockSvc.EXPECT().
 		GetPreset("u").
-		Return(&db.Preset{
+		Return(&preset.Preset{
 			UserName:    "u",
 			PasswordEnc: "enc-pw",
 			Cutoff:      "8:15",
@@ -180,7 +180,7 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
+		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().Equal("u", p.UserName)
 			s.Assert().NotEmpty(p.PasswordEnc)
 			s.Assert().Equal("PLC", p.Course.String)
@@ -211,7 +211,6 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_NoSessionPassword() {
-	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	user := &context.User{UserName: "u", APIToken: "token", Password: ""}
 
 	body, _ := json.Marshal(PresetRequest{Enabled: true})
@@ -226,7 +225,6 @@ func (s *PresetHandlerSuite) TestSavePreset_NoSessionPassword() {
 
 func (s *PresetHandlerSuite) TestSavePreset_NoEncryptionKey() {
 	s.handler.EncryptionKey = ""
-	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 
 	body, _ := json.Marshal(PresetRequest{Enabled: true})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
@@ -261,7 +259,7 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
+		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().Equal("8:15", p.Cutoff)
 			s.Assert().Equal(1, p.RetryInterval)
 			s.Assert().Equal("10m", p.Timeout)
@@ -282,7 +280,7 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_GeneratesTopic()
 	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
+		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().True(p.NtfyTopic.Valid)
 			s.Assert().Contains(p.NtfyTopic.String, "fore-cast-u-")
 			return nil
@@ -302,13 +300,13 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_GeneratesTopic()
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistingTopic() {
-	s.mockSvc.EXPECT().GetPreset("u").Return(&db.Preset{
+	s.mockSvc.EXPECT().GetPreset("u").Return(&preset.Preset{
 		PasswordEnc: "enc-pw",
 		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
 	}, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
+		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().Equal("fore-cast-u-existing", p.NtfyTopic.String)
 			return nil
 		})
@@ -327,13 +325,13 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistin
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {
-	s.mockSvc.EXPECT().GetPreset("u").Return(&db.Preset{
+	s.mockSvc.EXPECT().GetPreset("u").Return(&preset.Preset{
 		PasswordEnc: "enc-pw",
 		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
 	}, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
-		DoAndReturn(func(p db.Preset) error {
+		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().False(p.NtfyTopic.Valid)
 			s.Assert().Empty(p.NtfyTopic.String)
 			return nil

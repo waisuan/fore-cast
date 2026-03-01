@@ -25,7 +25,7 @@ func run() error {
 	defer d.Shutdown()
 
 	retention := time.Duration(retentionDays) * 24 * time.Hour
-	deleted, err := d.Service.PruneAttempts(retention)
+	deleted, err := d.History.PruneAttempts(retention)
 	if err != nil {
 		return fmt.Errorf("prune: %w", err)
 	}

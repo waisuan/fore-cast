@@ -38,10 +38,10 @@ func New(d *deps.Dependencies, sessStore *session.Store, client *booker.Client) 
 	api.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	api.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
 
-	historyHandler := &handlers.HistoryHandler{Service: d.Service}
+	historyHandler := &handlers.HistoryHandler{Service: d.History}
 	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
 
-	presetHandler := &handlers.PresetHandler{Service: d.Service, EncryptionKey: d.Config.EncryptionKey}
+	presetHandler := &handlers.PresetHandler{Service: d.Preset, EncryptionKey: d.Config.EncryptionKey}
 	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
 	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
 
