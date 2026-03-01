@@ -1,4 +1,3 @@
-// Use relative URL so requests go to same origin (Next.js); rewrites proxy /api to the Go server.
 export const API_BASE_URL =
   typeof window !== 'undefined' ? '' : process.env.NEXT_PUBLIC_API_BASE_URL || 'http://localhost:8080';
 
@@ -11,4 +10,6 @@ export const API_ENDPOINTS = {
   bookingCheckStatus: '/api/v1/booking/check-status',
   bookingBook: '/api/v1/booking/book',
   bookingAuto: '/api/v1/booking/auto',
+  history: '/api/v1/history',
+  preset: '/api/v1/preset',
 } as const;

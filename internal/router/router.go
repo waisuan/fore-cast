@@ -5,14 +5,14 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/waisuan/alfred/internal/booker"
-	"github.com/waisuan/alfred/internal/config"
+	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/handlers"
 	"github.com/waisuan/alfred/internal/middlewares"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 // New builds the HTTP router with all routes and middlewares.
-func New(cfg *config.Config, store *session.Store, client *booker.Client) http.Handler {
+func New(d *deps.Dependencies, sessStore *session.Store, client *booker.Client) http.Handler {
 	r := mux.NewRouter()
 	r.Use(middlewares.CORS)
 
@@ -21,11 +21,11 @@ func New(cfg *config.Config, store *session.Store, client *booker.Client) http.H
 		_, _ = w.Write([]byte("ok"))
 	}).Methods(http.MethodGet)
 
-	authHandler := &handlers.AuthHandler{Booker: client, Store: store}
+	authHandler := &handlers.AuthHandler{Booker: client, Store: sessStore}
 	r.HandleFunc("/api/v1/auth/login", authHandler.Login).Methods(http.MethodPost)
 
 	api := r.PathPrefix("/api/v1/").Subrouter()
-	api.Use(middlewares.SessionAuth(store))
+	api.Use(middlewares.SessionAuth(sessStore))
 
 	api.HandleFunc("/auth/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/auth/me", authHandler.Me).Methods(http.MethodGet)
@@ -38,6 +38,13 @@ func New(cfg *config.Config, store *session.Store, client *booker.Client) http.H
 	api.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	api.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
 	api.HandleFunc("/booking/auto", bookingHandler.Auto).Methods(http.MethodPost)
+
+	historyHandler := &handlers.HistoryHandler{Service: d.Service}
+	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
+
+	presetHandler := &handlers.PresetHandler{Service: d.Service, EncryptionKey: d.Config.EncryptionKey}
+	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
+	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
 
 	return r
 }

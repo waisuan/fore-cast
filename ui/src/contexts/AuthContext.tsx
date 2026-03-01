@@ -8,7 +8,7 @@ import React, {
   useCallback,
   ReactNode,
 } from 'react';
-import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
+import { api, ApiError, API_ENDPOINTS, setOnUnauthorized } from '@/utils/api';
 
 interface AuthUser {
   username: string;
@@ -41,6 +41,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     loadUser();
+    setOnUnauthorized(() => setUser(null));
   }, [loadUser]);
 
   const login = async (

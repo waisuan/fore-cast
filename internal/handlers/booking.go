@@ -192,7 +192,7 @@ func (h *BookingHandler) Auto(w http.ResponseWriter, r *http.Request) {
 		req.Retries = 1
 	}
 	if req.RetryIntervalSec < 1 {
-		req.RetryIntervalSec = 5
+		req.RetryIntervalSec = 1
 	}
 	courseID := slotutil.CourseForDate(req.Date)
 	for round := 0; round < req.Retries; round++ {

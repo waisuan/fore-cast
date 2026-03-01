@@ -11,18 +11,27 @@ import (
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
-	"github.com/waisuan/alfred/internal/config"
+	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/router"
 	"github.com/waisuan/alfred/internal/session"
+	"github.com/waisuan/alfred/migrations"
 )
 
 func main() {
-	cfg := config.Load()
-	store := session.NewStore(cfg.SessionTTL)
-	client := booker.NewClient()
-	handler := router.New(cfg, store, client)
+	d, err := deps.Initialise(migrations.FS)
+	if err != nil {
+		log.Fatalf("init deps: %v", err)
+	}
+	defer d.Shutdown()
 
-	addr := "0.0.0.0:" + cfg.Port
+	log.Println("Connected to database")
+
+	store := session.NewStore(d.Config.SessionTTL)
+	client := booker.NewClient()
+
+	handler := router.New(d, store, client)
+
+	addr := "0.0.0.0:" + d.Config.Port
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
 		log.Fatalf("Server failed to bind: %v", err)
@@ -30,12 +39,12 @@ func main() {
 
 	server := &http.Server{
 		Handler:      handler,
-		ReadTimeout:  cfg.ReadTimeout,
-		WriteTimeout: cfg.WriteTimeout,
-		IdleTimeout:  cfg.IdleTimeout,
+		ReadTimeout:  d.Config.ReadTimeout,
+		WriteTimeout: d.Config.WriteTimeout,
+		IdleTimeout:  d.Config.IdleTimeout,
 	}
 
-	log.Printf("Server listening on http://localhost:%s", cfg.Port)
+	log.Printf("Server listening on http://localhost:%s", d.Config.Port)
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
 			log.Fatalf("Server failed: %v", err)

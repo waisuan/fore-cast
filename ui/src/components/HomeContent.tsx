@@ -1,9 +1,11 @@
 'use client';
 
-import { useState, useEffect } from 'react';
+import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
+import { formatDate, formatTime } from '@/utils/date';
 import { useAuth } from '@/contexts/AuthContext';
+import Spinner from './Spinner';
 
 interface BookingItem {
   BookingID: string;
@@ -30,29 +32,26 @@ export default function HomeContent() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState('');
 
-  useEffect(() => {
+  const load = useCallback(async () => {
     if (!isAuthenticated) {
       setBookings(null);
       setLoading(false);
       return;
     }
-    let cancelled = false;
-    api
-      .get<BookingResponse>(API_ENDPOINTS.booking)
-      .then((res) => {
-        if (!cancelled) setBookings(res.Result ?? null);
-      })
-      .catch((e) => {
-        if (!cancelled)
-          setError(e instanceof ApiError ? e.message : 'Failed to load');
-      })
-      .finally(() => {
-        if (!cancelled) setLoading(false);
-      });
-    return () => {
-      cancelled = true;
-    };
+    setLoading(true);
+    try {
+      const res = await api.get<BookingResponse>(API_ENDPOINTS.booking);
+      setBookings(res.Result ?? null);
+    } catch (e) {
+      setError(e instanceof ApiError ? e.message : 'Failed to load');
+    } finally {
+      setLoading(false);
+    }
   }, [isAuthenticated]);
+
+  useEffect(() => {
+    load();
+  }, [load]);
 
   return (
     <div className="space-y-8">
@@ -64,7 +63,7 @@ export default function HomeContent() {
           href="/slots"
           className="rounded-lg border border-gray-200 bg-white px-4 py-3 text-left font-medium text-gray-900 shadow-sm hover:bg-gray-50 dark:border-gray-700 dark:bg-gray-800 dark:text-white dark:hover:bg-gray-700"
         >
-          View slots & book
+          View slots &amp; book
         </Link>
         <Link
           href="/auto"
@@ -80,9 +79,9 @@ export default function HomeContent() {
             My bookings
           </h2>
           {loading && (
-            <p className="text-sm text-gray-600 dark:text-gray-400">
-              Loading…
-            </p>
+            <div className="py-4">
+              <Spinner />
+            </div>
           )}
           {error && (
             <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
@@ -98,11 +97,11 @@ export default function HomeContent() {
                     {b.CourseName} ({b.CourseID})
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {b.TxnDate} · {b.TeeTime} · Session {b.Session} · TeeBox{' '}
+                    {formatDate(b.TxnDate)} &middot; {formatTime(b.TeeTime)} &middot; Session {b.Session} &middot; TeeBox{' '}
                     {b.TeeBox}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Booking ID: {b.BookingID} · {b.Pax} pax · {b.Hole} holes
+                    Booking ID: {b.BookingID} &middot; {b.Pax} pax &middot; {b.Hole} holes
                   </p>
                 </li>
               ))}

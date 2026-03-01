@@ -3,17 +3,18 @@ package main
 import (
 	"flag"
 	"fmt"
-	"net/http"
 	"os"
 	"sort"
 	"strings"
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/notify"
+	"github.com/waisuan/alfred/internal/runner"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
-const defaultRetryIntervalSec = 5
+const defaultRetryIntervalSec = 1
 
 func main() {
 	if err := run(); err != nil {
@@ -106,114 +107,28 @@ func run() error {
 	}
 
 	defer printBookingStatus(client, token, *user)
-	msg, err := runRetryLoop(client, token, txnDate, *user, courseID, cutoffTeeTime, *retryInterval, *retry, *debug, *timeout)
+
+	cfg := runner.Config{
+		UserName:      *user,
+		Token:         token,
+		TxnDate:       txnDate,
+		CourseID:      courseID,
+		CutoffTeeTime: cutoffTeeTime,
+		RetryInterval: *retryInterval,
+		Retry:         *retry,
+		Debug:         *debug,
+		Timeout:       *timeout,
+	}
+
+	result, err := runner.Run(cfg, client)
 	if err != nil {
-		notify(*ntfy, "FAILED: "+err.Error())
-	} else if msg != "" {
-		notify(*ntfy, msg)
+		notify.Send(*ntfy, "FAILED: "+err.Error())
+	} else if result.Message != "" {
+		notify.Send(*ntfy, result.Message)
 	}
 	return err
 }
 
-// tryBookSlot attempts to book one slot. Returns (true, bookingID, nil) on success, (false, "", nil) on failure.
-func tryBookSlot(client *booker.Client, token string, slot *booker.TeeTimeSlot, txnDate, userName string, debug bool) (booked bool, bookingID string, err error) {
-	fmt.Printf("Attempting to book at %s\n", time.Now().Format("2006-01-02 15:04:05"))
-	input := booker.GolfNewBooking2Input{
-		CourseID:   slot.CourseID,
-		TxnDate:    txnDate,
-		Session:    slot.Session,
-		TeeBox:     slot.TeeBox.String(),
-		TeeTime:    slot.TeeTime,
-		AccountID:  userName,
-		TotalGuest: 4,
-		IPaddress:  userName,
-		Holes:      18,
-	}
-	resp, err := client.BookTeeTime(token, input, debug)
-	if err != nil {
-		return false, "", err
-	}
-	if !resp.Status || len(resp.Result) == 0 || !resp.Result[0].Status {
-		return false, "", nil
-	}
-	return true, resp.Result[0].BookingID, nil
-}
-
-// printTeeTimeStatus calls GolfCheckTeeTimeStatus for the slot and prints the response.
-func printTeeTimeStatus(client *booker.Client, token string, slot *booker.TeeTimeSlot, txnDate, userName string) {
-	checkInput := booker.GolfCheckTeeTimeStatusInput{
-		CourseID:  slot.CourseID,
-		TxnDate:   txnDate,
-		Session:   slot.Session,
-		TeeBox:    slot.TeeBox.String(),
-		TeeTime:   slot.TeeTime,
-		UserName:  userName,
-		IPAddress: userName,
-	}
-	resp, err := client.CheckTeeTimeStatus(token, checkInput)
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "  tee time status: error %v\n", err)
-		return
-	}
-	reason := resp.Reason
-	if reason == "" {
-		reason = "(empty)"
-	}
-	fmt.Printf("  tee time status: Status=%v Reason=%s\n", resp.Status, reason)
-}
-
-// runRetryLoop fetches slots and attempts to book them.
-// When retry is true, loops until a slot is booked, none remain before cutoff, or timeout is reached.
-func runRetryLoop(client *booker.Client, token, txnDate, userName, courseID, cutoffTeeTime string, intervalSec int, retry, debug bool, timeout time.Duration) (string, error) {
-	start := time.Now()
-
-	for round := 1; ; round++ {
-		if !retry && round > 1 {
-			break
-		}
-		if retry && timeout > 0 && time.Since(start) >= timeout {
-			return "", fmt.Errorf("timeout after %s with no booking", timeout)
-		}
-		fmt.Printf("Target date: %s | Course: %s", txnDate, courseID)
-		if retry {
-			fmt.Printf(" (round %d)", round)
-		}
-		fmt.Println()
-		slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
-		if err != nil {
-			if !retry {
-				return "", fmt.Errorf("get tee times: %w", err)
-			}
-			fmt.Fprintf(os.Stderr, "[round %d] get tee times: %v\n", round, err)
-			time.Sleep(time.Duration(intervalSec) * time.Second)
-			continue
-		}
-		slotsBeforeCutoff := slotutil.SlotsBeforeCutoff(slots, cutoffTeeTime)
-		if len(slotsBeforeCutoff) == 0 {
-			return "", fmt.Errorf("earliest available slot is at or after %s (cutoff). No booking made", slotutil.FormatCutoffDisplay(cutoffTeeTime))
-		}
-		for si := range slotsBeforeCutoff {
-			slot := &slotsBeforeCutoff[si]
-			fmt.Printf("Slot: %s %s (TeeBox %s)\n", slot.TeeTime, slot.Session, slot.TeeBox.String())
-			printTeeTimeStatus(client, token, slot, txnDate, userName)
-			booked, bookingID, _ := tryBookSlot(client, token, slot, txnDate, userName, debug)
-			if booked {
-				msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s", slot.TeeTime, slot.Session, slot.TeeBox.String(), txnDate, courseID, bookingID)
-				fmt.Println(msg)
-				return msg, nil
-			}
-		}
-		if !retry {
-			earliest := slotsBeforeCutoff[0]
-			return "", fmt.Errorf("could not book any slot before %s (tried %d, earliest was %s)", slotutil.FormatCutoffDisplay(cutoffTeeTime), len(slotsBeforeCutoff), earliest.TeeTime)
-		}
-		fmt.Printf("No slot booked this round. Retrying in %d seconds...\n", intervalSec)
-		time.Sleep(time.Duration(intervalSec) * time.Second)
-	}
-	return "", nil
-}
-
-// printSlots fetches and prints available tee time slots for the date (no booking).
 func printSlots(client *booker.Client, token, txnDate, courseID, cutoffTeeTime string) error {
 	fmt.Printf("Available slots for %s | Course: %s\n", txnDate, courseID)
 	slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
@@ -236,7 +151,6 @@ func printSlots(client *booker.Client, token, txnDate, courseID, cutoffTeeTime s
 	return nil
 }
 
-// printBookingStatus fetches and prints current booking(s) for the account.
 func printBookingStatus(client *booker.Client, token, accountID string) {
 	resp, err := client.GetBooking(token, accountID, "", "")
 	if err != nil {
@@ -306,18 +220,4 @@ func valueOrDefault(v, fallback string) string {
 		return fallback
 	}
 	return v
-}
-
-func notify(topic, msg string) {
-	if topic == "" {
-		return
-	}
-	url := "https://ntfy.sh/" + topic
-	resp, err := http.Post(url, "text/plain", strings.NewReader(msg))
-	if err != nil {
-		fmt.Fprintf(os.Stderr, "ntfy: %v\n", err)
-		return
-	}
-	_ = resp.Body.Close()
-	fmt.Printf("ntfy: notified topic %s\n", topic)
 }

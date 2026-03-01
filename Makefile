@@ -1,10 +1,14 @@
-# Build the binary into bin/
+# Build binaries into bin/
 BINARY := bin/fore-cast
 WEB_BINARY := bin/fore-cast-web
+SCHEDULER_BINARY := bin/fore-cast-scheduler
+CLEANUP_BINARY := bin/fore-cast-cleanup
 CMD := ./cmd/cli
 CMD_WEB := ./cmd/web
+CMD_SCHEDULER := ./cmd/scheduler
+CMD_CLEANUP := ./cmd/cleanup
 
-.PHONY: build build-web build-all cli web fmt lint test check generate ui ui-install ui-build ui-lint
+.PHONY: build build-web build-scheduler build-cleanup build-all cli web fmt lint test check generate ui ui-install ui-build ui-lint
 build:
 	@mkdir -p bin
 	go build -o $(BINARY) $(CMD)
@@ -13,7 +17,15 @@ build-web:
 	@mkdir -p bin
 	go build -o $(WEB_BINARY) $(CMD_WEB)
 
-build-all: build build-web
+build-scheduler:
+	@mkdir -p bin
+	go build -o $(SCHEDULER_BINARY) $(CMD_SCHEDULER)
+
+build-cleanup:
+	@mkdir -p bin
+	go build -o $(CLEANUP_BINARY) $(CMD_CLEANUP)
+
+build-all: build build-web build-scheduler build-cleanup
 
 # Run the CLI
 cli:
