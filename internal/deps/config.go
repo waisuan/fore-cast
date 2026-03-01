@@ -30,6 +30,11 @@ type Config struct {
 	// Encryption (for stored credentials)
 	EncryptionKey string `env:"ENCRYPTION_KEY"`
 
+	// HTTP client timeouts (for outbound calls)
+	BookerHTTPTimeout time.Duration `env:"BOOKER_HTTP_TIMEOUT" envDefault:"30s"`
+	NotifyHTTPTimeout time.Duration `env:"NOTIFY_HTTP_TIMEOUT" envDefault:"10s"`
+	NtfyBaseURL       string        `env:"NTFY_BASE_URL" envDefault:"https://ntfy.sh"`
+
 	// Scheduler
 	MaxConcurrentPresets int `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
 }

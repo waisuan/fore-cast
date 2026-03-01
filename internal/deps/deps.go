@@ -4,8 +4,11 @@ import (
 	"database/sql"
 	"io/fs"
 
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/history"
+	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/preset"
+	"github.com/waisuan/alfred/internal/session"
 )
 
 // Dependencies is the top-level container for shared application resources.
@@ -14,6 +17,9 @@ type Dependencies struct {
 	PG      *sql.DB
 	Preset  preset.Service
 	History history.Service
+	Booker  booker.ClientInterface
+	Notify  notify.Service
+	Store   *session.Store
 }
 
 // Initialise loads configuration, opens a Postgres connection (with
@@ -35,11 +41,17 @@ func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 		PG:      pg,
 		Preset:  preset.NewService(pg),
 		History: history.NewService(pg),
+		Booker:  booker.NewClientWithOptions(booker.BaseURL, cfg.BookerHTTPTimeout),
+		Notify:  notify.NewService(cfg.NtfyBaseURL, cfg.NotifyHTTPTimeout),
+		Store:   session.NewStore(cfg.SessionTTL),
 	}, nil
 }
 
 // Shutdown releases resources held by Dependencies.
 func (d *Dependencies) Shutdown() {
+	if d.Store != nil {
+		d.Store.Close()
+	}
 	if d.PG != nil {
 		_ = d.PG.Close()
 	}

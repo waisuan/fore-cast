@@ -50,7 +50,7 @@ func TestLogging_DefaultsTo200(t *testing.T) {
 	assert.Contains(t, buf.String(), "200")
 }
 
-func TestLogging_5xx_IncludesErrBody(t *testing.T) {
+func TestLogging_5xx_LogsStatusOnly(t *testing.T) {
 	var buf bytes.Buffer
 	log.SetOutput(&buf)
 	defer log.SetOutput(nil)
@@ -67,26 +67,5 @@ func TestLogging_5xx_IncludesErrBody(t *testing.T) {
 	assert.Equal(t, http.StatusInternalServerError, rr.Code)
 	logLine := buf.String()
 	assert.Contains(t, logLine, "500")
-	assert.Contains(t, logLine, "err=")
-	assert.Contains(t, logLine, "connection refused")
-}
-
-func TestLogging_4xx_NoErrBody(t *testing.T) {
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	defer log.SetOutput(nil)
-
-	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		http.Error(w, "bad request", http.StatusBadRequest)
-	})
-	handler := middlewares.Logging(inner)
-
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset", nil)
-	rr := httptest.NewRecorder()
-	handler.ServeHTTP(rr, req)
-
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	logLine := buf.String()
-	assert.Contains(t, logLine, "400")
-	assert.NotContains(t, logLine, "err=")
+	assert.NotContains(t, logLine, "err=", "error detail is handled by internalError, not the logging middleware")
 }

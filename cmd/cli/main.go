@@ -118,11 +118,12 @@ func run() error {
 		Timeout:       *timeout,
 	}
 
+	ntfySvc := notify.NewService("https://ntfy.sh", 10*time.Second)
 	result, err := runner.Run(cfg, client)
 	if err != nil {
-		_ = notify.Send(*ntfy, "FAILED: "+err.Error())
+		_ = ntfySvc.Send(*ntfy, "FAILED: "+err.Error())
 	} else if result.Message != "" {
-		_ = notify.Send(*ntfy, result.Message)
+		_ = ntfySvc.Send(*ntfy, result.Message)
 	}
 	return err
 }

@@ -130,7 +130,7 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	passwordEnc, encErr := crypto.Encrypt(u.Password, h.EncryptionKey)
 	if encErr != nil {
-		http.Error(w, "failed to encrypt password", http.StatusInternalServerError)
+		http.Error(w, encErr.Error(), http.StatusInternalServerError)
 		return
 	}
 

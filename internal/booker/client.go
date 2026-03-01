@@ -8,6 +8,7 @@ import (
 	"net/http"
 	"os"
 	"strings"
+	"time"
 )
 
 // ClientInterface is the subset of the booking API used by handlers.
@@ -28,16 +29,18 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient returns a client that uses the default base URL and http.DefaultClient.
+const defaultHTTPTimeout = 30 * time.Second
+
+// NewClient returns a client with the default base URL and 30s timeout.
 func NewClient() *Client {
-	return NewClientWithBaseURL(BaseURL)
+	return NewClientWithOptions(BaseURL, defaultHTTPTimeout)
 }
 
-// NewClientWithBaseURL returns a client that uses the given base URL (e.g. for tests with httptest.Server).
-func NewClientWithBaseURL(baseURL string) *Client {
+// NewClientWithOptions returns a client with the given base URL and timeout.
+func NewClientWithOptions(baseURL string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 

@@ -84,7 +84,10 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 
 			printTeeTimeStatus(client, cfg.Token, slot, cfg.TxnDate, cfg.UserName)
 
-			booked, bookingID, _ := tryBookSlot(client, cfg, slot)
+			booked, bookingID, bookErr := tryBookSlot(client, cfg, slot)
+			if bookErr != nil {
+				fmt.Fprintf(os.Stderr, "  book error for %s: %v\n", slot.TeeTime, bookErr)
+			}
 			if booked {
 				msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s",
 					slot.TeeTime, slot.Session, slot.TeeBox.String(), cfg.TxnDate, cfg.CourseID, bookingID)

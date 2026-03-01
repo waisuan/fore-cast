@@ -10,10 +10,8 @@ import (
 	"syscall"
 	"time"
 
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/router"
-	"github.com/waisuan/alfred/internal/session"
 	"github.com/waisuan/alfred/migrations"
 )
 
@@ -26,10 +24,7 @@ func main() {
 
 	log.Println("Connected to database")
 
-	store := session.NewStore(d.Config.SessionTTL)
-	client := booker.NewClient()
-
-	handler := router.New(d, store, client)
+	handler := router.New(d)
 
 	addr := "0.0.0.0:" + d.Config.Port
 	listener, err := net.Listen("tcp", addr)

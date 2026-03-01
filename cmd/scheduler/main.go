@@ -8,7 +8,6 @@ import (
 	"sync"
 	"time"
 
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/history"
@@ -48,7 +47,6 @@ func run() error {
 	log.Printf("found %d enabled preset(s), concurrency limit %d", len(presets), d.Config.MaxConcurrentPresets)
 	start := time.Now()
 
-	client := booker.NewClient()
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
@@ -63,7 +61,7 @@ func run() error {
 
 			log.Printf("processing preset for user %s (course=%s cutoff=%s timeout=%s)",
 				p.UserName, p.Course.String, p.Cutoff, p.Timeout)
-			if err := processPreset(client, d, p); err != nil {
+			if err := processPreset(d, p); err != nil {
 				log.Printf("user %s: %v", p.UserName, err)
 				mu.Lock()
 				failed++
@@ -82,7 +80,7 @@ func run() error {
 	return nil
 }
 
-func processPreset(client *booker.Client, d *deps.Dependencies, p preset.Preset) error {
+func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	if err := d.Preset.UpdatePresetRunStatus(p.UserName, preset.RunStatusRunning, ""); err != nil {
 		log.Printf("user %s: failed to set running status: %v", p.UserName, err)
 	}
@@ -93,15 +91,14 @@ func processPreset(client *booker.Client, d *deps.Dependencies, p preset.Preset)
 		return fmt.Errorf("decrypt password: %w", err)
 	}
 
-	token, err := client.Login(p.UserName, password)
+	token, err := d.Booker.Login(p.UserName, password)
+	txnDate := slotutil.DateOneWeekAhead()
 	if err != nil {
-		logAttempt(d.History, p, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
-		notifyUser(p, "FAILED: login: "+err.Error())
+		logAttempt(d.History, p, txnDate, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
+		notifyUser(d.Notify, p, "FAILED: login: "+err.Error())
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "login: "+err.Error())
 		return fmt.Errorf("login: %w", err)
 	}
-
-	txnDate := slotutil.DateOneWeekAhead()
 	courseID := strings.TrimSpace(strings.ToUpper(p.Course.String))
 	if courseID == "" {
 		courseID = slotutil.CourseForDate(txnDate)
@@ -109,6 +106,7 @@ func processPreset(client *booker.Client, d *deps.Dependencies, p preset.Preset)
 
 	cutoffTeeTime, err := slotutil.ParseCutoff(p.Cutoff)
 	if err != nil {
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "parse cutoff: "+err.Error())
 		return fmt.Errorf("parse cutoff: %w", err)
 	}
 
@@ -129,26 +127,26 @@ func processPreset(client *booker.Client, d *deps.Dependencies, p preset.Preset)
 		Timeout:       timeout,
 	}
 
-	result, err := runner.Run(cfg, client)
-	logAttempt(d.History, p, result)
+	result, err := runner.Run(cfg, d.Booker)
+	logAttempt(d.History, p, txnDate, result)
 
 	if err != nil {
-		notifyUser(p, "FAILED: "+err.Error())
+		notifyUser(d.Notify, p, "FAILED: "+err.Error())
 		updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), err.Error())
 		return err
 	}
 	if result.Message != "" {
-		notifyUser(p, result.Message)
+		notifyUser(d.Notify, p, result.Message)
 	}
 	updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), result.Message)
 	return nil
 }
 
-func logAttempt(svc history.Service, p preset.Preset, result runner.Result) {
+func logAttempt(svc history.Service, p preset.Preset, txnDate string, result runner.Result) {
 	attempt := history.Attempt{
 		UserName:  p.UserName,
 		CourseID:  result.CourseID,
-		TxnDate:   slotutil.DateOneWeekAhead(),
+		TxnDate:   txnDate,
 		TeeTime:   sql.NullString{String: result.TeeTime, Valid: result.TeeTime != ""},
 		TeeBox:    sql.NullString{String: result.TeeBox, Valid: result.TeeBox != ""},
 		BookingID: sql.NullString{String: result.BookingID, Valid: result.BookingID != ""},
@@ -175,12 +173,12 @@ func updateRunDone(svc preset.Service, userName string, status preset.RunStatus,
 	}
 }
 
-func notifyUser(p preset.Preset, msg string) {
+func notifyUser(svc notify.Service, p preset.Preset, msg string) {
 	topic := p.NtfyTopic.String
 	if !p.NtfyTopic.Valid || topic == "" {
 		return
 	}
-	if err := notify.Send(topic, msg); err != nil {
+	if err := svc.Send(topic, msg); err != nil {
 		log.Printf("ntfy error for %s: %v", p.UserName, err)
 	} else {
 		log.Printf("ntfy: notified topic %s for user %s", topic, p.UserName)

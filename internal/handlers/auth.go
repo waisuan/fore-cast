@@ -46,20 +46,21 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	}
 	token, err := h.Booker.Login(req.Username, req.Password)
 	if err != nil {
-		http.Error(w, err.Error(), http.StatusUnauthorized)
+		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
 	sid, err := h.Store.Create(token, req.Username, req.Password)
 	if err != nil {
-		http.Error(w, "session error", http.StatusInternalServerError)
+		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
 	http.SetCookie(w, &http.Cookie{
 		Name:     middlewares.SessionCookieName(),
 		Value:    sid,
 		Path:     "/",
-		MaxAge:   86400, // 24h in seconds
+		MaxAge:   int(h.Store.TTL().Seconds()),
 		HttpOnly: true,
+		Secure:   r.TLS != nil || r.Header.Get("X-Forwarded-Proto") == "https",
 		SameSite: http.SameSiteLaxMode,
 	})
 	w.Header().Set("Content-Type", "application/json")
