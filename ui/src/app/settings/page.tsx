@@ -35,7 +35,7 @@ export default function SettingsPage() {
   const [course, setCourse] = useState('');
   const [cutoff, setCutoff] = useState('');
   const [retryInterval, setRetryInterval] = useState(1);
-  const [timeout, setTimeout] = useState('');
+  const [timeoutVal, setTimeoutVal] = useState('');
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -51,7 +51,7 @@ export default function SettingsPage() {
       setCourse(res.course ?? '');
       setCutoff(res.cutoff ?? '');
       setRetryInterval(res.retry_interval || res.defaults.retry_interval);
-      setTimeout(res.timeout ?? '');
+      setTimeoutVal(res.timeout ?? '');
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
@@ -77,7 +77,7 @@ export default function SettingsPage() {
         course,
         cutoff,
         retry_interval: retryInterval,
-        timeout,
+        timeout: timeoutVal,
         enable_notifications: enableNotifications,
         enabled,
       });
@@ -139,6 +139,7 @@ export default function SettingsPage() {
         </div>
       )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
+        <fieldset disabled={saving} className="flex flex-col gap-4">
         <div>
           <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Course override
@@ -198,8 +199,8 @@ export default function SettingsPage() {
           <input
             id="timeout"
             type="text"
-            value={timeout}
-            onChange={(e) => setTimeout(e.target.value)}
+            value={timeoutVal}
+            onChange={(e) => setTimeoutVal(e.target.value)}
             placeholder={defaults?.timeout}
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
@@ -262,6 +263,7 @@ export default function SettingsPage() {
             Enable auto-booking
           </label>
         </div>
+        </fieldset>
         <button
           type="submit"
           disabled={saving}

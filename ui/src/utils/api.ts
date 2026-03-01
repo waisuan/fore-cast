@@ -21,13 +21,14 @@ async function request<T>(
   options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  const { headers: optHeaders, ...rest } = options;
   const config: RequestInit = {
     credentials: 'include',
+    ...rest,
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(optHeaders as Record<string, string>),
     },
-    ...options,
   };
   const res = await fetch(url, config);
   let body: unknown;

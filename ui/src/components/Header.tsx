@@ -1,5 +1,6 @@
 'use client';
 
+import { useState } from 'react';
 import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
@@ -15,6 +16,16 @@ const navLinks = [
 export default function Header() {
   const { user, logout } = useAuth();
   const pathname = usePathname();
+  const [loggingOut, setLoggingOut] = useState(false);
+
+  async function handleLogout() {
+    setLoggingOut(true);
+    try {
+      await logout();
+    } finally {
+      setLoggingOut(false);
+    }
+  }
 
   return (
     <header className="sticky top-0 z-10 border-b border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800">
@@ -48,10 +59,11 @@ export default function Header() {
           </span>
           <button
             type="button"
-            onClick={() => logout()}
-            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+            onClick={handleLogout}
+            disabled={loggingOut}
+            className="text-sm text-blue-600 hover:underline disabled:opacity-50 dark:text-blue-400"
           >
-            Log out
+            {loggingOut ? 'Logging out…' : 'Log out'}
           </button>
         </div>
       </div>

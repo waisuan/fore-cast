@@ -14,6 +14,7 @@ import (
 // New builds the HTTP router with all routes and middlewares.
 func New(d *deps.Dependencies, sessStore *session.Store, client *booker.Client) http.Handler {
 	r := mux.NewRouter()
+	r.Use(middlewares.Logging)
 	r.Use(middlewares.CORS)
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {

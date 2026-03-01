@@ -45,9 +45,14 @@ func run() error {
 		return nil
 	}
 
+	log.Printf("found %d enabled preset(s), concurrency limit %d", len(presets), d.Config.MaxConcurrentPresets)
+	start := time.Now()
+
 	client := booker.NewClient()
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
 	var wg sync.WaitGroup
+	var mu sync.Mutex
+	var succeeded, failed int
 
 	for _, p := range presets {
 		wg.Add(1)
@@ -56,14 +61,24 @@ func run() error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			log.Printf("processing preset for user %s", p.UserName)
+			log.Printf("processing preset for user %s (course=%s cutoff=%s timeout=%s)",
+				p.UserName, p.Course.String, p.Cutoff, p.Timeout)
 			if err := processPreset(client, d, p); err != nil {
 				log.Printf("user %s: %v", p.UserName, err)
+				mu.Lock()
+				failed++
+				mu.Unlock()
+			} else {
+				mu.Lock()
+				succeeded++
+				mu.Unlock()
 			}
 		}(p)
 	}
 
 	wg.Wait()
+	log.Printf("finished: %d preset(s), %d succeeded, %d failed, took %s",
+		len(presets), succeeded, failed, time.Since(start).Round(time.Millisecond))
 	return nil
 }
 

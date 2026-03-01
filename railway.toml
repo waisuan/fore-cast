@@ -1,5 +1,5 @@
 [build]
-buildCommand = "go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run ./... && go test $(go list ./... | grep -v internal/db) && go build -o bin/fore-cast-scheduler ./cmd/scheduler && go build -o bin/fore-cast-cleanup ./cmd/cleanup && go build -o bin/fore-cast-web ./cmd/web"
+buildCommand = "bash scripts/build.sh"
 
 [deploy]
 startCommand = "bin/fore-cast-scheduler"
