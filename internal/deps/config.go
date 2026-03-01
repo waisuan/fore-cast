@@ -37,6 +37,13 @@ type Config struct {
 
 	// Scheduler
 	MaxConcurrentPresets int `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
+
+	// Dry-run (scheduler only): mock Booker API, no real HTTP calls.
+	// BOOKER_DRY_RUN_SCENARIO: success | timeout | empty (default: timeout)
+	// BOOKER_DRY_RUN_TIMEOUT: cap preset timeout for testing (e.g. 30s)
+	BookerDryRun         bool          `env:"BOOKER_DRY_RUN" envDefault:"false"`
+	BookerDryRunScenario string        `env:"BOOKER_DRY_RUN_SCENARIO" envDefault:"timeout"`
+	BookerDryRunTimeout  time.Duration `env:"BOOKER_DRY_RUN_TIMEOUT" envDefault:"0"`
 }
 
 // LoadConfig loads configuration from environment variables and optional .env files.

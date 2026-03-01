@@ -36,12 +36,19 @@ func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 		return nil, err
 	}
 
+	var bookerClient booker.ClientInterface
+	if cfg.BookerDryRun {
+		bookerClient = booker.NewDryRunClient(cfg.BookerDryRunScenario)
+	} else {
+		bookerClient = booker.NewClientWithOptions(booker.BaseURL, cfg.BookerHTTPTimeout)
+	}
+
 	return &Dependencies{
 		Config:  cfg,
 		PG:      pg,
 		Preset:  preset.NewService(pg),
 		History: history.NewService(pg),
-		Booker:  booker.NewClientWithOptions(booker.BaseURL, cfg.BookerHTTPTimeout),
+		Booker:  bookerClient,
 		Notify:  notify.NewService(cfg.NtfyBaseURL, cfg.NotifyHTTPTimeout),
 		Store:   session.NewStore(cfg.SessionTTL),
 	}, nil

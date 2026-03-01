@@ -44,6 +44,9 @@ func run() error {
 		return nil
 	}
 
+	if d.Config.BookerDryRun {
+		log.Printf("DRY-RUN: Booker API mocked (scenario=%s)", d.Config.BookerDryRunScenario)
+	}
 	log.Printf("found %d enabled preset(s), concurrency limit %d", len(presets), d.Config.MaxConcurrentPresets)
 	start := time.Now()
 
@@ -113,6 +116,9 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	timeout, err := time.ParseDuration(p.Timeout)
 	if err != nil {
 		timeout = 10 * time.Minute
+	}
+	if d.Config.BookerDryRun && d.Config.BookerDryRunTimeout > 0 && timeout > d.Config.BookerDryRunTimeout {
+		timeout = d.Config.BookerDryRunTimeout
 	}
 
 	cfg := runner.Config{

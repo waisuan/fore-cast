@@ -81,6 +81,8 @@ Presets are processed concurrently, capped at `MAX_CONCURRENT_PRESETS` (default 
 
 Run status (`running`, `success`, `failed`) is written back to the preset row so the web UI can display progress. Push notification topics are auto-generated per user when enabled via the settings page.
 
+**Dry-run mode** (local testing only): run `make scheduler-dry` to mock the Booker API. Override with `make scheduler-dry SCENARIO=success` or `SCENARIO=empty`. No real HTTP calls are made.
+
 ## Cleanup service
 
 A separate cron job that prunes booking history older than 30 days.
@@ -104,6 +106,9 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `DATABASE_URL` | *(required)* | Postgres connection string |
 | `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
 | `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
+| `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
+| `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |
+| `BOOKER_DRY_RUN_TIMEOUT` | *(none)* | Cap preset timeout when dry-run (e.g. `30s`) |
 
 ## Database migrations
 
@@ -122,6 +127,10 @@ Migrations also run automatically on startup for the scheduler, cleanup, and web
 make db-up         # start local Postgres
 make db-down       # stop Postgres (data preserved)
 make db-reset      # nuke volume and start fresh
+make web           # run web server
+make scheduler     # run scheduler (real Booker API)
+make scheduler-dry # run scheduler in dry-run mode (mock API)
+make cleanup       # run cleanup service (prune old history)
 make fmt           # format Go code
 make lint          # run golangci-lint
 make test          # run tests (db tests require Docker)

@@ -12,7 +12,7 @@ CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
 MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build build-web build-scheduler build-cleanup build-all cli web fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down ui ui-install ui-build ui-lint
+.PHONY: build build-web build-scheduler build-cleanup build-all cli web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down ui ui-install ui-build ui-lint
 build:
 	@mkdir -p bin
 	go build -o $(BINARY) $(CMD)
@@ -38,6 +38,19 @@ cli:
 # Run the web server (loads .env.development via APP_ENV)
 web:
 	APP_ENV=development go run $(CMD_WEB)
+
+# Run the scheduler (loads .env.development via APP_ENV)
+scheduler:
+	APP_ENV=development go run $(CMD_SCHEDULER)
+
+# Run the scheduler in dry-run mode (mock Booker API, no real HTTP calls)
+# Override: make scheduler-dry SCENARIO=success  or  make scheduler-dry SCENARIO=empty
+scheduler-dry:
+	BOOKER_DRY_RUN=true BOOKER_DRY_RUN_SCENARIO=$(or $(SCENARIO),timeout) BOOKER_DRY_RUN_TIMEOUT=$(or $(TIMEOUT),30s) APP_ENV=development go run $(CMD_SCHEDULER)
+
+# Run the cleanup service (prunes old history rows)
+cleanup:
+	APP_ENV=development go run $(CMD_CLEANUP)
 
 # Format Go code
 fmt:

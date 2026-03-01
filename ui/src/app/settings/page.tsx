@@ -39,9 +39,6 @@ export default function SettingsPage() {
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
-  const [lastRunStatus, setLastRunStatus] = useState('idle');
-  const [lastRunMessage, setLastRunMessage] = useState('');
-  const [lastRunAt, setLastRunAt] = useState<string | null>(null);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -55,9 +52,6 @@ export default function SettingsPage() {
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
-      setLastRunStatus(res.last_run_status ?? 'idle');
-      setLastRunMessage(res.last_run_message ?? '');
-      setLastRunAt(res.last_run_at ?? null);
     } catch (e) {
       addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
     } finally {
@@ -108,36 +102,6 @@ export default function SettingsPage() {
         automatically attempt to book a slot for <strong>1 week ahead</strong> on
         your behalf each time it runs.
       </p>
-      {enabled && lastRunStatus !== 'idle' && (
-        <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
-            lastRunStatus === 'running'
-              ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-              : lastRunStatus === 'success'
-                ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300'
-                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300'
-          }`}
-        >
-          <div className="flex items-center gap-2">
-            {lastRunStatus === 'running' && <Spinner className="h-3.5 w-3.5" />}
-            <span className="font-medium">
-              {lastRunStatus === 'running'
-                ? 'Scheduler is running...'
-                : lastRunStatus === 'success'
-                  ? 'Last run: booked successfully'
-                  : 'Last run: failed'}
-            </span>
-          </div>
-          {lastRunMessage && lastRunStatus !== 'running' && (
-            <p className="mt-1 text-xs opacity-80">{lastRunMessage}</p>
-          )}
-          {lastRunAt && (
-            <p className="mt-1 text-xs opacity-60">
-              {new Date(lastRunAt).toLocaleString()}
-            </p>
-          )}
-        </div>
-      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
         <fieldset disabled={saving} className="flex flex-col gap-4">
         <div>
