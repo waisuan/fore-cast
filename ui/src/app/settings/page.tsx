@@ -5,6 +5,26 @@ import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 
+async function copyToClipboard(text: string): Promise<boolean> {
+  if (navigator.clipboard?.writeText) {
+    await navigator.clipboard.writeText(text);
+    return true;
+  }
+  // Fallback for older browsers
+  const textarea = document.createElement('textarea');
+  textarea.value = text;
+  textarea.style.position = 'fixed';
+  textarea.style.opacity = '0';
+  document.body.appendChild(textarea);
+  textarea.select();
+  try {
+    document.execCommand('copy');
+    return true;
+  } finally {
+    document.body.removeChild(textarea);
+  }
+}
+
 interface PresetDefaults {
   course: string;
   cutoff: string;
@@ -40,6 +60,7 @@ export default function SettingsPage() {
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
+  const [copied, setCopied] = useState(false);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -76,6 +97,22 @@ export default function SettingsPage() {
     if (unit === 'm') return n * 60 * 1000;
     if (unit === 'h') return n * 3600 * 1000;
     return null;
+  }
+
+  async function handleCopyTopic() {
+    if (!ntfyTopic) return;
+    try {
+      const ok = await copyToClipboard(ntfyTopic);
+      if (ok) {
+        setCopied(true);
+        addToast('Topic copied to clipboard', 'success');
+        setTimeout(() => setCopied(false), 2000);
+      } else {
+        addToast('Failed to copy', 'error');
+      }
+    } catch {
+      addToast('Failed to copy', 'error');
+    }
   }
 
   async function handleSubmit(e: React.FormEvent) {
@@ -237,8 +274,20 @@ export default function SettingsPage() {
           </p>
           {enableNotifications && ntfyTopic && (
             <div className="mt-2 rounded border border-gray-200 bg-gray-50 px-3 py-2 dark:border-gray-600 dark:bg-gray-700">
-              <p className="text-xs text-gray-500 dark:text-gray-400">Your topic:</p>
-              <p className="font-mono text-sm text-gray-900 dark:text-white">{ntfyTopic}</p>
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="min-w-0 flex-1">
+                  <p className="text-xs text-gray-500 dark:text-gray-400">Your topic:</p>
+                  <p className="font-mono text-sm text-gray-900 dark:text-white break-all">{ntfyTopic}</p>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleCopyTopic}
+                  aria-label="Copy topic to clipboard"
+                  className="shrink-0 rounded border border-gray-300 bg-white px-3 py-2 text-sm font-medium text-gray-700 hover:bg-gray-50 min-h-[44px] dark:border-gray-500 dark:bg-gray-600 dark:text-gray-200 dark:hover:bg-gray-500"
+                >
+                  {copied ? 'Copied!' : 'Copy'}
+                </button>
+              </div>
             </div>
           )}
           {enableNotifications && !ntfyTopic && (
