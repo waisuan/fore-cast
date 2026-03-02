@@ -4,7 +4,7 @@
 
 [build]
 buildCommand = "go build -o bin/fore-cast-cleanup ./cmd/cleanup"
-watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod", "go.sum"]
+watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod", "go.sum", "railway/cleanup.toml"]
 
 [deploy]
 startCommand = "bin/fore-cast-cleanup"
