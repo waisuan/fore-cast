@@ -1,12 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "==> Lint"
-go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run ./...
-
-echo "==> Test"
-go test ./...
-
+# Lint and tests run in GitHub Actions. Railway builds after CI passes.
 echo "==> Build binaries"
 go build -o bin/fore-cast-scheduler ./cmd/scheduler
 go build -o bin/fore-cast-cleanup  ./cmd/cleanup

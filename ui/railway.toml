@@ -1,0 +1,8 @@
+# Deploy this service with root directory set to "ui" in Railway.
+# Set NEXT_PUBLIC_API_BASE_URL to your Web API service URL (e.g. https://fore-cast-web.railway.app).
+
+[build]
+buildCommand = "npm ci && npm run build"
+
+[deploy]
+startCommand = "npm start"

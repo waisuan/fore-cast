@@ -60,7 +60,7 @@ fmt:
 lint:
 	go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run ./...
 
-# Run Go tests
+# Run Go tests (includes integration tests; requires Docker)
 test:
 	go test ./...
 
