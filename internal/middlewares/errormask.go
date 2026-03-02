@@ -9,9 +9,9 @@ import (
 
 type errorMasker struct {
 	http.ResponseWriter
-	status    int
-	buf       bytes.Buffer
-	hijacked  bool
+	status   int
+	buf      bytes.Buffer
+	hijacked bool
 }
 
 func (m *errorMasker) WriteHeader(code int) {

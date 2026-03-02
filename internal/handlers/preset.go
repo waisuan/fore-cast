@@ -20,11 +20,11 @@ type PresetHandler struct {
 
 // PresetDefaults contains the server-side default values for preset fields.
 type PresetDefaults struct {
-	Course            string `json:"course"`
-	Cutoff            string `json:"cutoff"`
-	RetryInterval     string `json:"retry_interval"`
-	MinRetryInterval  string `json:"min_retry_interval"`
-	Timeout           string `json:"timeout"`
+	Course           string `json:"course"`
+	Cutoff           string `json:"cutoff"`
+	RetryInterval    string `json:"retry_interval"`
+	MinRetryInterval string `json:"min_retry_interval"`
+	Timeout          string `json:"timeout"`
 }
 
 // PresetResponse is the JSON response for GET /api/v1/preset.
