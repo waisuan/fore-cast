@@ -1,0 +1,12 @@
+# Web API service – HTTP API, always on.
+# In Railway: connect this service to the repo, set Config File Path to /railway/web.toml.
+# Root Directory: / (default)
+
+[build]
+buildCommand = "go build -o bin/fore-cast-web ./cmd/web"
+watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod", "go.sum"]
+
+[deploy]
+startCommand = "bin/fore-cast-web"
+restartPolicyType = "ON_FAILURE"
+healthcheckPath = "/health"

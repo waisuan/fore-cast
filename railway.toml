@@ -1,6 +1,0 @@
-[build]
-buildCommand = "bash scripts/build.sh"
-
-[deploy]
-startCommand = "bin/fore-cast-scheduler"
-restartPolicyType = "never"

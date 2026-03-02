@@ -1,8 +1,11 @@
-# Deploy this service with root directory set to "ui" in Railway.
-# Set NEXT_PUBLIC_API_BASE_URL to your Web API service URL (e.g. https://fore-cast-web.railway.app).
+# UI service – Next.js frontend.
+# In Railway: connect this service to the repo, set Config File Path to /ui/railway.toml.
+# Root Directory: ui
+# Variables: NEXT_PUBLIC_API_BASE_URL = Web service public URL
 
 [build]
 buildCommand = "npm ci && npm run build"
+watchPatterns = ["ui/**"]
 
 [deploy]
 startCommand = "npm start"
