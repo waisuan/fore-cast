@@ -12,7 +12,7 @@ export class ApiError extends Error {
 
 let onUnauthorized: (() => void) | null = null;
 
-export function setOnUnauthorized(fn: () => void) {
+export function setOnUnauthorized(fn: (() => void) | null) {
   onUnauthorized = fn;
 }
 
@@ -45,7 +45,12 @@ async function request<T>(
     const msg =
       (body && typeof body === 'object' && 'message' in body
         ? String((body as { message: unknown }).message)
-        : null) || res.statusText || `HTTP ${res.status}`;
+        : null) ||
+      (typeof body === 'string' && body.trim().length > 0 && body.length < 500
+        ? body.trim()
+        : null) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
     throw new ApiError(msg, res.status);
   }
   return body as T;

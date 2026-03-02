@@ -86,7 +86,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 			PasswordEnc:   "enc-pw",
 			Course:        sql.NullString{String: "PLC", Valid: true},
 			Cutoff:        "7:30",
-			RetryInterval: 2,
+			RetryInterval: "2s",
 			Timeout:       "5m",
 			NtfyTopic:     sql.NullString{String: "my-topic", Valid: true},
 			Enabled:       true,
@@ -104,7 +104,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal("u", resp.UserName)
 	s.Assert().Equal("PLC", resp.Course)
 	s.Assert().Equal("7:30", resp.Cutoff)
-	s.Assert().Equal(2, resp.RetryInterval)
+	s.Assert().Equal("2s", resp.RetryInterval)
 	s.Assert().Equal("5m", resp.Timeout)
 	s.Assert().Equal("my-topic", resp.NtfyTopic)
 	s.Assert().True(resp.EnableNotifications)
@@ -119,10 +119,11 @@ func (s *PresetHandlerSuite) TestGetPreset_Found_NoTopic() {
 	s.mockSvc.EXPECT().
 		GetPreset("u").
 		Return(&preset.Preset{
-			UserName:    "u",
-			PasswordEnc: "enc-pw",
-			Cutoff:      "8:15",
-			Timeout:     "10m",
+			UserName:      "u",
+			PasswordEnc:   "enc-pw",
+			Cutoff:        "8:15",
+			RetryInterval: "1s",
+			Timeout:       "10m",
 		}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
@@ -185,7 +186,7 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 			s.Assert().NotEmpty(p.PasswordEnc)
 			s.Assert().Equal("PLC", p.Course.String)
 			s.Assert().Equal("7:30", p.Cutoff)
-			s.Assert().Equal(2, p.RetryInterval)
+			s.Assert().Equal("2s", p.RetryInterval)
 			s.Assert().Equal("5m", p.Timeout)
 			s.Assert().True(p.Enabled)
 			return nil
@@ -194,7 +195,7 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 	body, _ := json.Marshal(PresetRequest{
 		Course:        "PLC",
 		Cutoff:        "7:30",
-		RetryInterval: 2,
+		RetryInterval: "2s",
 		Timeout:       "5m",
 		Enabled:       true,
 	})
@@ -261,12 +262,58 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 		UpsertPreset(gomock.Any()).
 		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().Equal("8:15", p.Cutoff)
-			s.Assert().Equal(1, p.RetryInterval)
+			s.Assert().Equal("1s", p.RetryInterval)
 			s.Assert().Equal("10m", p.Timeout)
 			return nil
 		})
 
 	body, _ := json.Marshal(PresetRequest{})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_InvalidRetryInterval_FallsBackToDefault() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().Equal("1s", p.RetryInterval, "invalid duration should fall back to default")
+			return nil
+		})
+
+	body, _ := json.Marshal(PresetRequest{
+		RetryInterval: "not-a-duration",
+		Cutoff:        "8:15",
+		Timeout:       "10m",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_RetryIntervalBelowMin_ClampedTo500ms() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().Equal(preset.MinRetryInterval, p.RetryInterval, "value below 500ms should be clamped")
+			return nil
+		})
+
+	body, _ := json.Marshal(PresetRequest{
+		RetryInterval: "100ms",
+		Cutoff:        "8:15",
+		Timeout:       "10m",
+	})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(context.WithUser(req.Context(), s.user))

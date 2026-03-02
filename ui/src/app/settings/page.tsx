@@ -8,7 +8,8 @@ import Spinner from '@/components/Spinner';
 interface PresetDefaults {
   course: string;
   cutoff: string;
-  retry_interval: number;
+  retry_interval: string;
+  min_retry_interval: string;
   timeout: string;
 }
 
@@ -16,7 +17,7 @@ interface PresetData {
   user_name: string;
   course: string;
   cutoff: string;
-  retry_interval: number;
+  retry_interval: string;
   timeout: string;
   ntfy_topic: string;
   enable_notifications: boolean;
@@ -34,7 +35,7 @@ export default function SettingsPage() {
   const [defaults, setDefaults] = useState<PresetDefaults | null>(null);
   const [course, setCourse] = useState('');
   const [cutoff, setCutoff] = useState('');
-  const [retryInterval, setRetryInterval] = useState(1);
+  const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
@@ -44,10 +45,10 @@ export default function SettingsPage() {
     setLoading(true);
     try {
       const res = await api.get<PresetData>(API_ENDPOINTS.preset);
-      setDefaults(res.defaults);
+      setDefaults(res.defaults ?? null);
       setCourse(res.course ?? '');
       setCutoff(res.cutoff ?? '');
-      setRetryInterval(res.retry_interval || res.defaults.retry_interval);
+      setRetryIntervalVal(res.retry_interval ?? res.defaults?.retry_interval ?? '1s');
       setTimeoutVal(res.timeout ?? '');
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
@@ -63,14 +64,44 @@ export default function SettingsPage() {
     load();
   }, [load]);
 
+  const MIN_RETRY_MS = 500;
+
+  function parseDurationMs(s: string): number | null {
+    const match = s.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/i);
+    if (!match) return null;
+    const n = parseFloat(match[1]);
+    const unit = match[2].toLowerCase();
+    if (unit === 'ms') return n;
+    if (unit === 's') return n * 1000;
+    if (unit === 'm') return n * 60 * 1000;
+    if (unit === 'h') return n * 3600 * 1000;
+    return null;
+  }
+
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
     setSaving(true);
     try {
+      let retryInterval = retryIntervalVal.trim();
+      const retryMs = parseDurationMs(retryInterval);
+      if (retryMs !== null && retryMs < MIN_RETRY_MS) {
+        retryInterval = '500ms';
+        addToast('Retry interval must be at least 500ms, adjusted to 500ms', 'info');
+      } else if (retryMs === null && retryInterval !== '') {
+        addToast('Invalid retry interval format (e.g. 1s, 500ms)', 'error');
+        setSaving(false);
+        return;
+      }
+      const timeout = timeoutVal.trim();
+      if (timeout !== '' && parseDurationMs(timeout) === null) {
+        addToast('Invalid timeout format (e.g. 10m, 1h, 30s)', 'error');
+        setSaving(false);
+        return;
+      }
       await api.put(API_ENDPOINTS.preset, {
         course,
         cutoff,
-        retry_interval: retryInterval,
+        retry_interval: retryInterval || undefined,
         timeout: timeoutVal,
         enable_notifications: enableNotifications,
         enabled,
@@ -103,7 +134,8 @@ export default function SettingsPage() {
         your behalf each time it runs.
       </p>
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <fieldset disabled={saving} className="flex flex-col gap-4">
+        <fieldset disabled={saving} className="flex flex-col gap-4" aria-busy={saving}>
+          <legend className="sr-only">Auto-booker configuration</legend>
         <div>
           <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Course override
@@ -139,17 +171,17 @@ export default function SettingsPage() {
         </div>
         <div>
           <label htmlFor="retryInterval" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Retry interval (seconds)
+            Retry interval
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Pause between booking attempts. Default: {defaults?.retry_interval}
+            Pause between booking attempts (e.g. 1s, 500ms). Min: {defaults?.min_retry_interval ?? '500ms'}. Default: {defaults?.retry_interval}
           </p>
           <input
             id="retryInterval"
-            type="number"
-            min={1}
-            value={retryInterval}
-            onChange={(e) => setRetryInterval(parseInt(e.target.value, 10) || 1)}
+            type="text"
+            value={retryIntervalVal}
+            onChange={(e) => setRetryIntervalVal(e.target.value)}
+            placeholder={defaults?.retry_interval}
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
         </div>
@@ -231,6 +263,7 @@ export default function SettingsPage() {
         <button
           type="submit"
           disabled={saving}
+          aria-busy={saving}
           className="w-full max-w-xs rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {saving ? <Spinner className="h-4 w-4 text-white" /> : 'Save settings'}

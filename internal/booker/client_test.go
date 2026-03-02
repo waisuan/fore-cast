@@ -1,6 +1,7 @@
 package booker
 
 import (
+	"errors"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -87,6 +88,19 @@ func (s *ClientSuite) TestGetTeeTimeSlots_StatusFalse() {
 	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
 	_, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
 	s.Require().Error(err)
+}
+
+func (s *ClientSuite) TestGetTeeTimeSlots_InvalidToken() {
+	srv := httptest.NewServer(http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+		w.Header().Set("Content-Type", "application/json")
+		_, _ = w.Write([]byte(`{"Status":false,"Reason":"CODE103 - Invalid Token","Result":[]}`))
+	}))
+	defer srv.Close()
+
+	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	_, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
+	s.Require().Error(err)
+	s.Assert().True(errors.Is(err, ErrInvalidToken))
 }
 
 func (s *ClientSuite) TestBookTeeTime_Success() {

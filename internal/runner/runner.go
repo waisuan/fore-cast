@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"errors"
 	"fmt"
 	"os"
 	"time"
@@ -25,7 +26,7 @@ type Config struct {
 	TxnDate       string
 	CourseID      string
 	CutoffTeeTime string
-	RetryInterval int
+	RetryInterval time.Duration
 	Retry         bool
 	Debug         bool
 	Timeout       time.Duration
@@ -63,12 +64,17 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 
 		slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
 		if err != nil {
+			if errors.Is(err, booker.ErrInvalidToken) {
+				msg := "session expired — please log in again"
+				return Result{Status: StatusFailed, Message: msg},
+					fmt.Errorf("get tee times: %w", err)
+			}
 			if !cfg.Retry {
 				return Result{Status: StatusFailed, Message: err.Error()},
 					fmt.Errorf("get tee times: %w", err)
 			}
 			fmt.Fprintf(os.Stderr, "[round %d] get tee times: %v\n", round, err)
-			time.Sleep(time.Duration(cfg.RetryInterval) * time.Second)
+			time.Sleep(cfg.RetryInterval)
 			continue
 		}
 
@@ -109,8 +115,8 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 			return Result{Status: StatusFailed, Message: msg}, fmt.Errorf("%s", msg)
 		}
 
-		fmt.Printf("No slot booked this round. Retrying in %d seconds...\n", cfg.RetryInterval)
-		time.Sleep(time.Duration(cfg.RetryInterval) * time.Second)
+		fmt.Printf("No slot booked this round. Retrying in %s...\n", cfg.RetryInterval)
+		time.Sleep(cfg.RetryInterval)
 	}
 	return Result{Status: StatusFailed, Message: "no booking made"}, nil
 }

@@ -7,6 +7,11 @@ import AppContent from '@/components/AppContent';
 export const metadata: Metadata = {
   title: 'fore-cast',
   description: 'Golf tee time booking automation',
+  icons: {
+    icon: '/favicon.ico',
+    apple: '/apple-touch-icon.png',
+  },
+  manifest: '/site.webmanifest',
 };
 
 export const viewport: Viewport = {

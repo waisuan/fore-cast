@@ -64,6 +64,7 @@ export default function HistoryPage() {
           type="button"
           onClick={load}
           disabled={loading}
+          aria-busy={loading}
           className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
         >
           Refresh
@@ -78,48 +79,83 @@ export default function HistoryPage() {
         <p className="text-gray-600 dark:text-gray-400">No booking history yet.</p>
       )}
       {!loading && data.length > 0 && (
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-700 dark:text-gray-400">
-              <tr>
-                <th className="px-3 py-2">Date</th>
-                <th className="px-3 py-2">Target</th>
-                <th className="px-3 py-2">Time</th>
-                <th className="px-3 py-2">Status</th>
-                <th className="px-3 py-2">Message</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
-              {data.map((item) => (
-                <tr key={item.id} className="text-gray-900 dark:text-gray-100">
-                  <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
-                    {new Date(item.created_at).toLocaleString(undefined, {
-                      month: 'short',
-                      day: 'numeric',
-                      hour: '2-digit',
-                      minute: '2-digit',
-                    })}
-                  </td>
-                  <td className="px-3 py-2">
+        <>
+          {/* Card layout for mobile */}
+          <div className="space-y-3 md:hidden">
+            {data.map((item) => (
+              <div
+                key={item.id}
+                className="rounded-lg border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
+              >
+                <div className="flex items-center justify-between gap-2">
+                  <span className="text-sm font-medium text-gray-900 dark:text-white">
                     {formatDate(item.txn_date)} &middot; {item.course_id}
-                  </td>
-                  <td className="px-3 py-2">
-                    {item.tee_time || '-'}
-                    {item.tee_box ? ` / Box ${item.tee_box}` : ''}
-                  </td>
-                  <td className="px-3 py-2">
-                    <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(item.status)}`}>
-                      {item.status}
-                    </span>
-                  </td>
-                  <td className="max-w-xs truncate px-3 py-2 text-gray-500 dark:text-gray-400" title={item.message}>
-                    {item.booking_id ? `ID: ${item.booking_id}` : item.message}
-                  </td>
+                  </span>
+                  <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(item.status)}`}>
+                    {item.status}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+                  {new Date(item.created_at).toLocaleString(undefined, {
+                    month: 'short',
+                    day: 'numeric',
+                    hour: '2-digit',
+                    minute: '2-digit',
+                  })}
+                  {' · '}
+                  {item.tee_time || '-'}
+                  {item.tee_box ? ` / Box ${item.tee_box}` : ''}
+                </p>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300" title={item.message}>
+                  {item.booking_id ? `ID: ${item.booking_id}` : item.message}
+                </p>
+              </div>
+            ))}
+          </div>
+          {/* Table layout for desktop */}
+          <div className="hidden overflow-x-auto md:block">
+            <table className="w-full text-left text-sm">
+              <thead className="border-b border-gray-200 text-xs uppercase text-gray-500 dark:border-gray-700 dark:text-gray-400">
+                <tr>
+                  <th className="px-3 py-2">Date</th>
+                  <th className="px-3 py-2">Target</th>
+                  <th className="px-3 py-2">Time</th>
+                  <th className="px-3 py-2">Status</th>
+                  <th className="px-3 py-2">Message</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+              </thead>
+              <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
+                {data.map((item) => (
+                  <tr key={item.id} className="text-gray-900 dark:text-gray-100">
+                    <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
+                      {new Date(item.created_at).toLocaleString(undefined, {
+                        month: 'short',
+                        day: 'numeric',
+                        hour: '2-digit',
+                        minute: '2-digit',
+                      })}
+                    </td>
+                    <td className="px-3 py-2">
+                      {formatDate(item.txn_date)} &middot; {item.course_id}
+                    </td>
+                    <td className="px-3 py-2">
+                      {item.tee_time || '-'}
+                      {item.tee_box ? ` / Box ${item.tee_box}` : ''}
+                    </td>
+                    <td className="px-3 py-2">
+                      <span className={`inline-block rounded-full px-2 py-0.5 text-xs font-medium ${statusBadge(item.status)}`}>
+                        {item.status}
+                      </span>
+                    </td>
+                    <td className="max-w-xs truncate px-3 py-2 text-gray-500 dark:text-gray-400" title={item.message}>
+                      {item.booking_id ? `ID: ${item.booking_id}` : item.message}
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );

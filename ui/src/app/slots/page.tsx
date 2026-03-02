@@ -1,6 +1,6 @@
 'use client';
 
-import { useState } from 'react';
+import { useState, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 import { toApiDate, formatTime } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
@@ -26,7 +26,7 @@ export default function SlotsPage() {
   const [loading, setLoading] = useState(false);
   const [bookingSlotKey, setBookingSlotKey] = useState<string | null>(null);
 
-  async function loadSlots() {
+  const loadSlots = useCallback(async () => {
     if (!date) {
       addToast('Please pick a date', 'error');
       return;
@@ -47,26 +47,33 @@ export default function SlotsPage() {
     } finally {
       setLoading(false);
     }
-  }
+  }, [date, addToast]);
 
-  async function bookSlot(slot: Slot) {
-    const key = `${slot.TeeTime}-${slot.TeeBox}`;
-    setBookingSlotKey(key);
-    try {
-      const res = await api.post<{ bookingID: string }>(API_ENDPOINTS.bookingBook, {
-        courseID: slot.CourseID,
-        txnDate: toApiDate(date),
-        session: slot.Session,
-        teeBox: slot.TeeBox,
-        teeTime: slot.TeeTime,
-      });
-      addToast(`Booked! ID: ${res.bookingID}`, 'success');
-    } catch (e) {
-      addToast(e instanceof ApiError ? e.message : 'Booking failed', 'error');
-    } finally {
-      setBookingSlotKey(null);
-    }
-  }
+  const bookSlot = useCallback(
+    async (slot: Slot) => {
+      const key = `${slot.TeeTime}-${slot.TeeBox}`;
+      setBookingSlotKey(key);
+      try {
+        const res = await api.post<{ bookingID?: string }>(API_ENDPOINTS.bookingBook, {
+          courseID: slot.CourseID,
+          txnDate: toApiDate(date),
+          session: slot.Session,
+          teeBox: slot.TeeBox,
+          teeTime: slot.TeeTime,
+        });
+        if (res?.bookingID) {
+          addToast(`Booked! ID: ${res.bookingID}`, 'success');
+        } else {
+          addToast('Booking failed — no confirmation received', 'error');
+        }
+      } catch (e) {
+        addToast(e instanceof ApiError ? e.message : 'Booking failed', 'error');
+      } finally {
+        setBookingSlotKey(null);
+      }
+    },
+    [date, addToast]
+  );
 
   return (
     <div className="space-y-6">
@@ -90,6 +97,7 @@ export default function SlotsPage() {
           type="button"
           onClick={loadSlots}
           disabled={loading}
+          aria-busy={loading}
           className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
           {loading ? <Spinner className="h-4 w-4 text-white" /> : 'Load slots'}
@@ -123,6 +131,7 @@ export default function SlotsPage() {
                   type="button"
                   onClick={() => bookSlot(slot)}
                   disabled={bookingSlotKey !== null}
+                  aria-busy={bookingSlotKey === `${slot.TeeTime}-${slot.TeeBox}`}
                   className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
                 >
                   {bookingSlotKey === `${slot.TeeTime}-${slot.TeeBox}` ? (

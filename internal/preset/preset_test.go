@@ -71,7 +71,7 @@ func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
 		PasswordEnc:   "encrypted-pw",
 		Course:        sql.NullString{String: "PLC", Valid: true},
 		Cutoff:        "8:15",
-		RetryInterval: 5,
+		RetryInterval: "5s",
 		Timeout:       "10m",
 		NtfyTopic:     sql.NullString{String: "my-topic", Valid: true},
 		Enabled:       true,
@@ -86,7 +86,7 @@ func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
 	s.Assert().Equal("PLC", p.Course.String)
 	s.Assert().True(p.Course.Valid)
 	s.Assert().Equal("8:15", p.Cutoff)
-	s.Assert().Equal(5, p.RetryInterval)
+	s.Assert().Equal("5s", p.RetryInterval)
 	s.Assert().Equal("10m", p.Timeout)
 	s.Assert().Equal("my-topic", p.NtfyTopic.String)
 	s.Assert().True(p.Enabled)
@@ -98,7 +98,7 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 		UserName:      "alice",
 		PasswordEnc:   "v1",
 		Cutoff:        "8:15",
-		RetryInterval: 5,
+		RetryInterval: "5s",
 		Timeout:       "10m",
 		Enabled:       false,
 	})
@@ -109,7 +109,7 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 		PasswordEnc:   "v2",
 		Course:        sql.NullString{String: "BRC", Valid: true},
 		Cutoff:        "7:30",
-		RetryInterval: 3,
+		RetryInterval: "3s",
 		Timeout:       "5m",
 		Enabled:       true,
 	})
@@ -121,7 +121,7 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 	s.Assert().Equal("v2", p.PasswordEnc)
 	s.Assert().Equal("BRC", p.Course.String)
 	s.Assert().Equal("7:30", p.Cutoff)
-	s.Assert().Equal(3, p.RetryInterval)
+	s.Assert().Equal("3s", p.RetryInterval)
 	s.Assert().Equal("5m", p.Timeout)
 	s.Assert().True(p.Enabled)
 }
@@ -135,19 +135,19 @@ func (s *ServiceSuite) TestGetPreset_NotFound() {
 func (s *ServiceSuite) TestGetEnabledPresets() {
 	err := s.svc.UpsertPreset(preset.Preset{
 		UserName: "alice", PasswordEnc: "enc1", Cutoff: "8:15",
-		RetryInterval: 5, Timeout: "10m", Enabled: true,
+		RetryInterval: "5s", Timeout: "10m", Enabled: true,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName: "bob", PasswordEnc: "enc2", Cutoff: "7:30",
-		RetryInterval: 3, Timeout: "5m", Enabled: false,
+		RetryInterval: "3s", Timeout: "5m", Enabled: false,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName: "carol", PasswordEnc: "enc3", Cutoff: "8:00",
-		RetryInterval: 5, Timeout: "10m", Enabled: true,
+		RetryInterval: "5s", Timeout: "10m", Enabled: true,
 	})
 	s.Require().NoError(err)
 
@@ -191,7 +191,7 @@ func TestUpdatePresetRunStatus(t *testing.T) {
 
 	err = svc.UpsertPreset(preset.Preset{
 		UserName: "alice", PasswordEnc: "enc", Cutoff: "8:15",
-		RetryInterval: 1, Timeout: "10m", Enabled: true,
+		RetryInterval: "1s", Timeout: "10m", Enabled: true,
 	})
 	require.NoError(t, err)
 

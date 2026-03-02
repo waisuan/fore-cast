@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"fmt"
 	"testing"
 	"time"
 
@@ -17,7 +18,7 @@ func baseCfg(token string) Config {
 		TxnDate:       "2026/03/04",
 		CourseID:      "PLC",
 		CutoffTeeTime: "1899-12-30T08:15:00",
-		RetryInterval: 1,
+		RetryInterval: time.Second,
 		Retry:         false,
 		Debug:         false,
 		Timeout:       10 * time.Second,
@@ -98,7 +99,7 @@ func TestRun_Timeout(t *testing.T) {
 	cfg := baseCfg("tok")
 	cfg.Retry = true
 	cfg.Timeout = 1 * time.Nanosecond
-	cfg.RetryInterval = 0
+	cfg.RetryInterval = 0 // no sleep for fast timeout test
 
 	slots := []booker.TeeTimeSlot{
 		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
@@ -126,4 +127,25 @@ func TestRun_GetSlotsError_NoRetry(t *testing.T) {
 	result, err := Run(cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
+}
+
+func TestRun_InvalidToken_FailsFast(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Retry = true
+	cfg.Timeout = 5 * time.Second
+	cfg.RetryInterval = time.Millisecond
+
+	errInvalid := fmt.Errorf("get tee time: %w", booker.ErrInvalidToken)
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(nil, errInvalid).Times(1)
+
+	result, err := Run(cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, StatusFailed, result.Status)
+	assert.Contains(t, result.Message, "session expired")
+	assert.True(t, assert.ErrorIs(t, err, booker.ErrInvalidToken))
 }

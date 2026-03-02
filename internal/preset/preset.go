@@ -7,9 +7,13 @@ import (
 
 const (
 	DefaultCutoff        = "8:15"
-	DefaultRetryInterval = 1
+	DefaultRetryInterval = "1s"
 	DefaultTimeout       = "10m"
+	MinRetryInterval     = "500ms"
 )
+
+// MinRetryIntervalDuration is the minimum allowed retry interval (500ms).
+const MinRetryIntervalDuration time.Duration = 500 * time.Millisecond
 
 // Service defines operations on booking presets.
 //
@@ -38,7 +42,7 @@ type Preset struct {
 	UpdatedAt      time.Time
 	Course         sql.NullString
 	Cutoff         string
-	RetryInterval  int
+	RetryInterval  string
 	Timeout        string
 	NtfyTopic      sql.NullString
 	Enabled        bool

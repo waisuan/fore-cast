@@ -62,8 +62,8 @@ func run() error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			log.Printf("processing preset for user %s (course=%s cutoff=%s timeout=%s)",
-				p.UserName, p.Course.String, p.Cutoff, p.Timeout)
+			log.Printf("processing preset for user %s (course=%s cutoff=%s retry=%s timeout=%s)",
+				p.UserName, p.Course.String, p.Cutoff, p.RetryInterval, p.Timeout)
 			if err := processPreset(d, p); err != nil {
 				log.Printf("user %s: %v", p.UserName, err)
 				mu.Lock()
@@ -115,10 +115,21 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 
 	timeout, err := time.ParseDuration(p.Timeout)
 	if err != nil {
+		log.Printf("user %s: invalid timeout %q, falling back to 10m", p.UserName, p.Timeout)
 		timeout = 10 * time.Minute
 	}
 	if d.Config.BookerDryRun && d.Config.BookerDryRunTimeout > 0 && timeout > d.Config.BookerDryRunTimeout {
 		timeout = d.Config.BookerDryRunTimeout
+	}
+
+	retryInterval, err := time.ParseDuration(p.RetryInterval)
+	if err != nil {
+		log.Printf("user %s: invalid retry_interval %q, falling back to 1s", p.UserName, p.RetryInterval)
+		retryInterval = time.Second
+	}
+	if retryInterval < preset.MinRetryIntervalDuration {
+		log.Printf("user %s: retry_interval %s below minimum %s, using minimum", p.UserName, retryInterval, preset.MinRetryIntervalDuration)
+		retryInterval = preset.MinRetryIntervalDuration
 	}
 
 	cfg := runner.Config{
@@ -127,7 +138,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		TxnDate:       txnDate,
 		CourseID:      courseID,
 		CutoffTeeTime: cutoffTeeTime,
-		RetryInterval: p.RetryInterval,
+		RetryInterval: retryInterval,
 		Retry:         true,
 		Debug:         false,
 		Timeout:       timeout,

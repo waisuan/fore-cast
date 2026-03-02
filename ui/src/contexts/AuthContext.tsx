@@ -42,32 +42,36 @@ export function AuthProvider({ children }: { children: ReactNode }) {
   useEffect(() => {
     loadUser();
     setOnUnauthorized(() => setUser(null));
+    return () => setOnUnauthorized(null);
   }, [loadUser]);
 
-  const login = async (
-    username: string,
-    password: string
-  ): Promise<{ success: boolean; error?: string }> => {
-    try {
-      const data = await api.post<{ user: AuthUser }>(API_ENDPOINTS.login, {
-        username,
-        password,
-      });
-      setUser(data.user);
-      return { success: true };
-    } catch (e) {
-      const msg = e instanceof ApiError ? e.message : 'Login failed';
-      return { success: false, error: msg };
-    }
-  };
+  const login = useCallback(
+    async (
+      username: string,
+      password: string
+    ): Promise<{ success: boolean; error?: string }> => {
+      try {
+        const data = await api.post<{ user: AuthUser }>(API_ENDPOINTS.login, {
+          username,
+          password,
+        });
+        setUser(data.user);
+        return { success: true };
+      } catch (e) {
+        const msg = e instanceof ApiError ? e.message : 'Login failed';
+        return { success: false, error: msg };
+      }
+    },
+    []
+  );
 
-  const logout = async () => {
+  const logout = useCallback(async () => {
     try {
       await api.post(API_ENDPOINTS.logout);
     } finally {
       setUser(null);
     }
-  };
+  }, []);
 
   return (
     <AuthContext.Provider

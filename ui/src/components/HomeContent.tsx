@@ -2,7 +2,8 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
-import { api, API_ENDPOINTS } from '@/utils/api';
+import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
+import { useToast } from '@/contexts/ToastContext';
 import Spinner from './Spinner';
 
 interface PresetStatus {
@@ -13,6 +14,7 @@ interface PresetStatus {
 }
 
 export default function HomeContent() {
+  const { addToast } = useToast();
   const [status, setStatus] = useState<PresetStatus | null>(null);
   const [dismissedId, setDismissedId] = useState<string | null>(null);
 
@@ -25,10 +27,11 @@ export default function HomeContent() {
         last_run_message: res.last_run_message ?? '',
         last_run_at: res.last_run_at ?? null,
       });
-    } catch {
+    } catch (e) {
       setStatus(null);
+      addToast(e instanceof ApiError ? e.message : 'Failed to load status', 'error');
     }
-  }, []);
+  }, [addToast]);
 
   useEffect(() => {
     load();
@@ -53,9 +56,9 @@ export default function HomeContent() {
 
   return (
     <div className="space-y-8">
-      <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-        Tee times
-      </h1>
+      <p className="text-sm text-gray-600 dark:text-gray-400">
+        Having trouble loading slots or your bookings? Try logging out (menu above) and signing in again to refresh your session.
+      </p>
       {showBanner && (
         <div
           className={`relative rounded-lg border px-4 py-3 pr-10 text-sm ${
@@ -89,7 +92,7 @@ export default function HomeContent() {
           {last_run_message && last_run_status !== 'running' && (
             <p className="mt-1 text-xs opacity-80">{last_run_message}</p>
           )}
-          {last_run_at && (
+          {last_run_at && !isNaN(new Date(last_run_at).getTime()) && (
             <p className="mt-1 text-xs opacity-60">
               {new Date(last_run_at).toLocaleString()}
             </p>
@@ -110,6 +113,11 @@ export default function HomeContent() {
           My bookings
         </Link>
       </nav>
+      {enabled && (
+        <p className="text-sm text-gray-500 dark:text-gray-400">
+          Scheduler runs daily at 9:55–10:00 PM (Malaysia).
+        </p>
+      )}
     </div>
   );
 }

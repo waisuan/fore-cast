@@ -29,6 +29,10 @@ func (h *BookingHandler) GetBooking(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}
+	if !resp.Status && booker.IsInvalidToken(resp.Reason) {
+		http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
+		return
+	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(resp)
 }
@@ -71,6 +75,10 @@ func (h *BookingHandler) CheckStatus(w http.ResponseWriter, r *http.Request) {
 	resp, err := h.Booker.CheckTeeTimeStatus(u.APIToken, input)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !resp.Status && booker.IsInvalidToken(resp.Reason) {
+		http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
@@ -118,6 +126,10 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !statusResp.Status {
+		if booker.IsInvalidToken(statusResp.Reason) {
+			http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
+			return
+		}
 		http.Error(w, "slot no longer available", http.StatusConflict)
 		return
 	}
@@ -138,6 +150,10 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	if !bookResp.Status || len(bookResp.Result) == 0 || !bookResp.Result[0].Status {
+		if booker.IsInvalidToken(bookResp.Reason) {
+			http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
+			return
+		}
 		reason := bookResp.Reason
 		if reason == "" {
 			reason = "booking failed"

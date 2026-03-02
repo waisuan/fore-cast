@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"errors"
 	"net/http"
 
 	"github.com/waisuan/alfred/internal/booker"
@@ -42,6 +43,10 @@ func (h *SlotsHandler) Slots(w http.ResponseWriter, r *http.Request) {
 	courseID := slotutil.CourseForDate(date)
 	slots, err := h.Booker.GetTeeTimeSlots(u.APIToken, courseID, date)
 	if err != nil {
+		if errors.Is(err, booker.ErrInvalidToken) {
+			http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
+			return
+		}
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return
 	}

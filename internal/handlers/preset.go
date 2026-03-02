@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/crypto"
@@ -19,10 +20,11 @@ type PresetHandler struct {
 
 // PresetDefaults contains the server-side default values for preset fields.
 type PresetDefaults struct {
-	Course        string `json:"course"`
-	Cutoff        string `json:"cutoff"`
-	RetryInterval int    `json:"retry_interval"`
-	Timeout       string `json:"timeout"`
+	Course            string `json:"course"`
+	Cutoff            string `json:"cutoff"`
+	RetryInterval     string `json:"retry_interval"`
+	MinRetryInterval  string `json:"min_retry_interval"`
+	Timeout           string `json:"timeout"`
 }
 
 // PresetResponse is the JSON response for GET /api/v1/preset.
@@ -30,7 +32,7 @@ type PresetResponse struct {
 	UserName            string         `json:"user_name"`
 	Course              string         `json:"course"`
 	Cutoff              string         `json:"cutoff"`
-	RetryInterval       int            `json:"retry_interval"`
+	RetryInterval       string         `json:"retry_interval"`
 	Timeout             string         `json:"timeout"`
 	NtfyTopic           string         `json:"ntfy_topic"`
 	EnableNotifications bool           `json:"enable_notifications"`
@@ -45,7 +47,7 @@ type PresetResponse struct {
 type PresetRequest struct {
 	Course              string `json:"course"`
 	Cutoff              string `json:"cutoff"`
-	RetryInterval       int    `json:"retry_interval"`
+	RetryInterval       string `json:"retry_interval"`
 	Timeout             string `json:"timeout"`
 	EnableNotifications *bool  `json:"enable_notifications"`
 	Enabled             bool   `json:"enabled"`
@@ -63,10 +65,11 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	defaults := PresetDefaults{
-		Course:        "Auto (by day of week)",
-		Cutoff:        preset.DefaultCutoff,
-		RetryInterval: preset.DefaultRetryInterval,
-		Timeout:       preset.DefaultTimeout,
+		Course:           "Auto (by day of week)",
+		Cutoff:           preset.DefaultCutoff,
+		RetryInterval:    preset.DefaultRetryInterval,
+		MinRetryInterval: preset.MinRetryInterval,
+		Timeout:          preset.DefaultTimeout,
 	}
 
 	existing, err := h.Service.GetPreset(u.UserName)
@@ -155,8 +158,15 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 	if p.Cutoff == "" {
 		p.Cutoff = preset.DefaultCutoff
 	}
-	if p.RetryInterval < 1 {
+	if p.RetryInterval == "" {
 		p.RetryInterval = preset.DefaultRetryInterval
+	} else {
+		d, err := time.ParseDuration(p.RetryInterval)
+		if err != nil {
+			p.RetryInterval = preset.DefaultRetryInterval
+		} else if d < preset.MinRetryIntervalDuration {
+			p.RetryInterval = preset.MinRetryInterval
+		}
 	}
 	if p.Timeout == "" {
 		p.Timeout = preset.DefaultTimeout

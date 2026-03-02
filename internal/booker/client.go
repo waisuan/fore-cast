@@ -97,6 +97,9 @@ func (c *Client) GetTeeTimeSlots(token, courseID, txnDate string) ([]TeeTimeSlot
 		return nil, fmt.Errorf("parse tee time response: %w", err)
 	}
 	if !resp.Status {
+		if IsInvalidToken(resp.Reason) {
+			return nil, fmt.Errorf("get tee time: %w", ErrInvalidToken)
+		}
 		return nil, fmt.Errorf("get tee time returned Status=false")
 	}
 	return resp.Result, nil

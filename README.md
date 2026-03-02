@@ -64,6 +64,9 @@ Credentials are passed via `-user` and `-password`. No database required.
 # Retry until booked (useful for competitive booking windows)
 ./bin/fore-cast -user <member-id> -password <password> -retry -timeout 10m
 
+# Custom retry interval (e.g. 500ms, 1s)
+./bin/fore-cast -user <member-id> -password <password> -retry -retry-interval 500ms
+
 # Delay execution until a specific time (e.g. wait for booking window to open)
 ./bin/fore-cast -user <member-id> -password <password> -retry -at 22:00
 
