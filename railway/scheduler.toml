@@ -9,4 +9,4 @@ watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod
 [deploy]
 startCommand = "bin/fore-cast-scheduler"
 restartPolicyType = "never"
-cronSchedule = "55 21 * * *"  # 9:55 PM UTC daily; adjust as needed
+cronSchedule = "30 14 * * *"  # 10:30 PM Malaysia – for testing; TODO: switch back to "55 13 * * *" (9:55 PM) after staging
