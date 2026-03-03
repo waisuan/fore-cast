@@ -155,6 +155,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 
 	logger.Info("starting run", logger.String("user", p.UserName), logger.String("course", courseID), logger.String("txn_date", txnDate))
+	notifyUser(d.Notify, p, fmt.Sprintf("Searching for tee times on %s at %s...", txnDate, courseID))
 	result, err := runner.Run(cfg, d.Booker)
 	logAttempt(d.History, p, txnDate, result)
 
