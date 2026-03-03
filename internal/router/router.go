@@ -12,10 +12,10 @@ import (
 // New builds the HTTP router with all routes and middlewares.
 func New(d *deps.Dependencies) http.Handler {
 	r := mux.NewRouter()
-	r.Use(middlewares.Logging)
+	r.Use(middlewares.Logging())
 	r.Use(middlewares.CORS)
 	r.Use(middlewares.BodyLimit)
-	r.Use(middlewares.ErrorMask)
+	r.Use(middlewares.ErrorMask())
 
 	r.HandleFunc("/health", func(w http.ResponseWriter, r *http.Request) {
 		w.WriteHeader(http.StatusOK)

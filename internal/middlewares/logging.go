@@ -1,9 +1,10 @@
 package middlewares
 
 import (
-	"log"
 	"net/http"
 	"time"
+
+	"github.com/waisuan/alfred/internal/logger"
 )
 
 type statusRecorder struct {
@@ -16,13 +17,19 @@ func (r *statusRecorder) WriteHeader(code int) {
 	r.ResponseWriter.WriteHeader(code)
 }
 
-// Logging logs each HTTP request with method, path, status code, and latency.
+// Logging returns a middleware that logs each HTTP request with method, path, status code, and latency.
 // Error detail for 5xx responses is handled by handlers.internalError.
-func Logging(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		start := time.Now()
-		rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(rec, r)
-		log.Printf("%s %s %d %s", r.Method, r.URL.Path, rec.status, time.Since(start).Round(time.Microsecond))
-	})
+func Logging() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			start := time.Now()
+			rec := &statusRecorder{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(rec, r)
+			logger.Info("http_request",
+				logger.String("method", r.Method),
+				logger.String("path", r.URL.Path),
+				logger.Int("status", rec.status),
+				logger.Duration("latency", time.Since(start).Round(time.Microsecond)))
+		})
+	}
 }

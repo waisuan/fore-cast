@@ -6,6 +6,7 @@ import (
 
 	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/history"
+	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/preset"
 	"github.com/waisuan/alfred/internal/session"
@@ -24,8 +25,11 @@ type Dependencies struct {
 
 // Initialise loads configuration, opens a Postgres connection (with
 // migrations), and creates the domain service layers. Both DATABASE_URL and
-// a valid migrationsFS are required.
+// a valid migrationsFS are required. The global logger is initialised here
+// and can be used via logger.Info, logger.Warn, etc. throughout the application.
 func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
+	logger.Init()
+
 	cfg, err := LoadConfig()
 	if err != nil {
 		return nil, err
@@ -62,4 +66,5 @@ func (d *Dependencies) Shutdown() {
 	if d.PG != nil {
 		_ = d.PG.Close()
 	}
+	logger.Sync()
 }

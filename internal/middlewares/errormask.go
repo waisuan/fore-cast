@@ -2,9 +2,10 @@ package middlewares
 
 import (
 	"bytes"
-	"log"
 	"net/http"
 	"strings"
+
+	"github.com/waisuan/alfred/internal/logger"
 )
 
 type errorMasker struct {
@@ -30,17 +31,22 @@ func (m *errorMasker) Write(b []byte) (int, error) {
 	return m.ResponseWriter.Write(b)
 }
 
-// ErrorMask intercepts 5xx responses: the real error body is logged
+// ErrorMask returns a middleware that intercepts 5xx responses: the real error body is logged
 // server-side and replaced with a generic message for the client.
 // Handlers can freely use http.Error(w, err.Error(), 500) without
 // leaking internal details.
-func ErrorMask(next http.Handler) http.Handler {
-	return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
-		m := &errorMasker{ResponseWriter: w, status: http.StatusOK}
-		next.ServeHTTP(m, r)
-		if m.hijacked {
-			log.Printf("%s %s: %s", r.Method, r.URL.Path, strings.TrimSpace(m.buf.String()))
-			http.Error(m.ResponseWriter, "internal server error", m.status)
-		}
-	})
+func ErrorMask() func(http.Handler) http.Handler {
+	return func(next http.Handler) http.Handler {
+		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
+			m := &errorMasker{ResponseWriter: w, status: http.StatusOK}
+			next.ServeHTTP(m, r)
+			if m.hijacked {
+				logger.Error("internal server error",
+					logger.String("method", r.Method),
+					logger.String("path", r.URL.Path),
+					logger.String("detail", strings.TrimSpace(m.buf.String())))
+				http.Error(m.ResponseWriter, "internal server error", m.status)
+			}
+		})
+	}
 }

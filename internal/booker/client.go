@@ -6,9 +6,10 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
 	"time"
+
+	"github.com/waisuan/alfred/internal/logger"
 )
 
 // ClientInterface is the subset of the booking API used by handlers.
@@ -113,14 +114,14 @@ func (c *Client) BookTeeTime(token string, input GolfNewBooking2Input, debug boo
 		return nil, fmt.Errorf("marshal booking request: %w", err)
 	}
 	if debug {
-		fmt.Fprintf(os.Stderr, "[debug] booking request body:\n%s\n", string(jsonBody))
+		logger.Debug("booking request", logger.String("body", string(jsonBody)))
 	}
 	raw, err := c.doWithBody(jsonBody, token)
 	if err != nil {
 		return nil, fmt.Errorf("booking request: %w", err)
 	}
 	if debug {
-		fmt.Fprintf(os.Stderr, "[debug] booking response body:\n%s\n", string(raw))
+		logger.Debug("booking response", logger.String("body", string(raw)))
 	}
 	var resp BookingResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {

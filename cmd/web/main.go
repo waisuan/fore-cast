@@ -2,7 +2,6 @@ package main
 
 import (
 	"context"
-	"log"
 	"net"
 	"net/http"
 	"os"
@@ -11,6 +10,7 @@ import (
 	"time"
 
 	"github.com/waisuan/alfred/internal/deps"
+	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/router"
 	"github.com/waisuan/alfred/migrations"
 )
@@ -18,18 +18,18 @@ import (
 func main() {
 	d, err := deps.Initialise(migrations.FS)
 	if err != nil {
-		log.Fatalf("init deps: %v", err)
+		logger.Fatal("init deps", logger.Err(err))
 	}
 	defer d.Shutdown()
 
-	log.Println("Connected to database")
+	logger.Info("connected to database")
 
 	handler := router.New(d)
 
 	addr := "0.0.0.0:" + d.Config.Port
 	listener, err := net.Listen("tcp", addr)
 	if err != nil {
-		log.Fatalf("Server failed to bind: %v", err)
+		logger.Fatal("server failed to bind", logger.Err(err))
 	}
 
 	server := &http.Server{
@@ -39,10 +39,10 @@ func main() {
 		IdleTimeout:  d.Config.IdleTimeout,
 	}
 
-	log.Printf("Server listening on http://localhost:%s", d.Config.Port)
+	logger.Info("server listening", logger.String("addr", "http://localhost:"+d.Config.Port))
 	go func() {
 		if err := server.Serve(listener); err != nil && err != http.ErrServerClosed {
-			log.Fatalf("Server failed: %v", err)
+			logger.Fatal("server failed", logger.Err(err))
 		}
 	}()
 

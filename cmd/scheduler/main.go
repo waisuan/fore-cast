@@ -3,7 +3,6 @@ package main
 import (
 	"database/sql"
 	"fmt"
-	"log"
 	"strings"
 	"sync"
 	"time"
@@ -11,6 +10,7 @@ import (
 	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/history"
+	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/preset"
 	"github.com/waisuan/alfred/internal/runner"
@@ -19,18 +19,18 @@ import (
 )
 
 func main() {
-	if err := run(); err != nil {
-		log.Fatalf("scheduler: %v", err)
-	}
-}
-
-func run() error {
 	d, err := deps.Initialise(migrations.FS)
 	if err != nil {
-		return fmt.Errorf("init deps: %w", err)
+		logger.Fatal("init deps", logger.Err(err))
 	}
 	defer d.Shutdown()
 
+	if err := run(d); err != nil {
+		logger.Fatal("scheduler", logger.Err(err))
+	}
+}
+
+func run(d *deps.Dependencies) error {
 	if d.Config.EncryptionKey == "" {
 		return fmt.Errorf("ENCRYPTION_KEY is required")
 	}
@@ -40,14 +40,14 @@ func run() error {
 		return fmt.Errorf("get presets: %w", err)
 	}
 	if len(presets) == 0 {
-		log.Println("no enabled presets found, nothing to do")
+		logger.Info("no enabled presets found, nothing to do")
 		return nil
 	}
 
 	if d.Config.BookerDryRun {
-		log.Printf("DRY-RUN: Booker API mocked (scenario=%s)", d.Config.BookerDryRunScenario)
+		logger.Info("dry-run: booker api mocked", logger.String("scenario", d.Config.BookerDryRunScenario))
 	}
-	log.Printf("found %d enabled preset(s), concurrency limit %d", len(presets), d.Config.MaxConcurrentPresets)
+	logger.Info("found enabled presets", logger.Int("count", len(presets)), logger.Int("concurrency", d.Config.MaxConcurrentPresets))
 	start := time.Now()
 
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
@@ -62,10 +62,14 @@ func run() error {
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
-			log.Printf("processing preset for user %s (course=%s cutoff=%s retry=%s timeout=%s)",
-				p.UserName, p.Course.String, p.Cutoff, p.RetryInterval, p.Timeout)
+			logger.Info("processing preset",
+				logger.String("user", p.UserName),
+				logger.String("course", p.Course.String),
+				logger.String("cutoff", p.Cutoff),
+				logger.String("retry", p.RetryInterval),
+				logger.String("timeout", p.Timeout))
 			if err := processPreset(d, p); err != nil {
-				log.Printf("user %s: %v", p.UserName, err)
+				logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
 				mu.Lock()
 				failed++
 				mu.Unlock()
@@ -78,14 +82,17 @@ func run() error {
 	}
 
 	wg.Wait()
-	log.Printf("finished: %d preset(s), %d succeeded, %d failed, took %s",
-		len(presets), succeeded, failed, time.Since(start).Round(time.Millisecond))
+	logger.Info("finished",
+		logger.Int("total", len(presets)),
+		logger.Int("succeeded", succeeded),
+		logger.Int("failed", failed),
+		logger.Duration("took", time.Since(start).Round(time.Millisecond)))
 	return nil
 }
 
 func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	if err := d.Preset.UpdatePresetRunStatus(p.UserName, preset.RunStatusRunning, ""); err != nil {
-		log.Printf("user %s: failed to set running status: %v", p.UserName, err)
+		logger.Warn("failed to set running status", logger.String("user", p.UserName), logger.Err(err))
 	}
 
 	password, err := crypto.Decrypt(p.PasswordEnc, d.Config.EncryptionKey)
@@ -115,7 +122,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 
 	timeout, err := time.ParseDuration(p.Timeout)
 	if err != nil {
-		log.Printf("user %s: invalid timeout %q, falling back to 10m", p.UserName, p.Timeout)
+		logger.Warn("invalid timeout, falling back to 10m", logger.String("user", p.UserName), logger.String("timeout", p.Timeout))
 		timeout = 10 * time.Minute
 	}
 	if d.Config.BookerDryRun && d.Config.BookerDryRunTimeout > 0 && timeout > d.Config.BookerDryRunTimeout {
@@ -124,11 +131,14 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 
 	retryInterval, err := time.ParseDuration(p.RetryInterval)
 	if err != nil {
-		log.Printf("user %s: invalid retry_interval %q, falling back to 1s", p.UserName, p.RetryInterval)
+		logger.Warn("invalid retry_interval, falling back to 1s", logger.String("user", p.UserName), logger.String("retry_interval", p.RetryInterval))
 		retryInterval = time.Second
 	}
 	if retryInterval < preset.MinRetryIntervalDuration {
-		log.Printf("user %s: retry_interval %s below minimum %s, using minimum", p.UserName, retryInterval, preset.MinRetryIntervalDuration)
+		logger.Warn("retry_interval below minimum, using minimum",
+			logger.String("user", p.UserName),
+			logger.Duration("retry_interval", retryInterval),
+			logger.Duration("min", preset.MinRetryIntervalDuration))
 		retryInterval = preset.MinRetryIntervalDuration
 	}
 
@@ -171,7 +181,7 @@ func logAttempt(svc history.Service, p preset.Preset, txnDate string, result run
 		Message:   result.Message,
 	}
 	if err := svc.LogAttempt(attempt); err != nil {
-		log.Printf("failed to log attempt for %s: %v", p.UserName, err)
+		logger.Error("failed to log attempt", logger.String("user", p.UserName), logger.Err(err))
 	}
 }
 
@@ -186,7 +196,7 @@ func runStatusFromResult(s runner.Status) preset.RunStatus {
 
 func updateRunDone(svc preset.Service, userName string, status preset.RunStatus, message string) {
 	if err := svc.UpdatePresetRunStatus(userName, status, message); err != nil {
-		log.Printf("user %s: failed to update run status: %v", userName, err)
+		logger.Error("failed to update run status", logger.String("user", userName), logger.Err(err))
 	}
 }
 
@@ -196,8 +206,8 @@ func notifyUser(svc notify.Service, p preset.Preset, msg string) {
 		return
 	}
 	if err := svc.Send(topic, msg); err != nil {
-		log.Printf("ntfy error for %s: %v", p.UserName, err)
+		logger.Error("failed to send ntfy notification", logger.String("user", p.UserName), logger.Err(err))
 	} else {
-		log.Printf("ntfy: notified topic %s for user %s", topic, p.UserName)
+		logger.Info("ntfy notification sent", logger.String("topic", topic), logger.String("user", p.UserName))
 	}
 }

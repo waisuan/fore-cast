@@ -2,13 +2,13 @@ package deps
 
 import (
 	"fmt"
-	"log"
 	"os"
 	"path/filepath"
 	"time"
 
 	"github.com/caarlos0/env/v9"
 	"github.com/joho/godotenv"
+	"github.com/waisuan/alfred/internal/logger"
 )
 
 // Config holds all configuration settings for the application.
@@ -70,7 +70,7 @@ func LoadConfig() (*Config, error) {
 func dir(envFile string) string {
 	currentDir, err := os.Getwd()
 	if err != nil {
-		log.Printf("deps: could not get cwd: %v", err)
+		logger.Warn("failed to get cwd", logger.Err(err))
 		return envFile
 	}
 	for {

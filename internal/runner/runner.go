@@ -3,10 +3,10 @@ package runner
 import (
 	"errors"
 	"fmt"
-	"os"
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
@@ -56,11 +56,10 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 				fmt.Errorf("timeout after %s with no booking", cfg.Timeout)
 		}
 
-		fmt.Printf("Target date: %s | Course: %s", cfg.TxnDate, cfg.CourseID)
-		if cfg.Retry {
-			fmt.Printf(" (round %d)", round)
-		}
-		fmt.Println()
+		logger.Info("round",
+			logger.String("txn_date", cfg.TxnDate),
+			logger.String("course", cfg.CourseID),
+			logger.Int("round", round))
 
 		slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
 		if err != nil {
@@ -73,7 +72,7 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 				return Result{Status: StatusFailed, Message: err.Error()},
 					fmt.Errorf("get tee times: %w", err)
 			}
-			fmt.Fprintf(os.Stderr, "[round %d] get tee times: %v\n", round, err)
+			logger.Warn("get tee times failed", logger.Int("round", round), logger.Err(err))
 			time.Sleep(cfg.RetryInterval)
 			continue
 		}
@@ -86,18 +85,21 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 
 		for si := range slotsBeforeCutoff {
 			slot := &slotsBeforeCutoff[si]
-			fmt.Printf("Slot: %s %s (TeeBox %s)\n", slot.TeeTime, slot.Session, slot.TeeBox.String())
+			logger.Info("slot",
+				logger.String("tee_time", slot.TeeTime),
+				logger.String("session", slot.Session),
+				logger.String("tee_box", slot.TeeBox.String()))
 
 			printTeeTimeStatus(client, cfg.Token, slot, cfg.TxnDate, cfg.UserName)
 
 			booked, bookingID, bookErr := tryBookSlot(client, cfg, slot)
 			if bookErr != nil {
-				fmt.Fprintf(os.Stderr, "  book error for %s: %v\n", slot.TeeTime, bookErr)
+				logger.Error("failed to book slot", logger.String("tee_time", slot.TeeTime), logger.Err(bookErr))
 			}
 			if booked {
 				msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s",
 					slot.TeeTime, slot.Session, slot.TeeBox.String(), cfg.TxnDate, cfg.CourseID, bookingID)
-				fmt.Println(msg)
+				logger.Info("booked", logger.String("message", msg))
 				return Result{
 					Status:    StatusSuccess,
 					Message:   msg,
@@ -115,14 +117,14 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 			return Result{Status: StatusFailed, Message: msg}, fmt.Errorf("%s", msg)
 		}
 
-		fmt.Printf("No slot booked this round. Retrying in %s...\n", cfg.RetryInterval)
+		logger.Info("no slot booked this round, retrying", logger.Duration("interval", cfg.RetryInterval))
 		time.Sleep(cfg.RetryInterval)
 	}
 	return Result{Status: StatusFailed, Message: "no booking made"}, nil
 }
 
 func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTimeSlot) (bool, string, error) {
-	fmt.Printf("Attempting to book at %s\n", time.Now().Format("2006-01-02 15:04:05"))
+	logger.Info("attempting to book", logger.Time("at", time.Now()))
 	input := booker.GolfNewBooking2Input{
 		CourseID:   slot.CourseID,
 		TxnDate:    cfg.TxnDate,
@@ -156,12 +158,12 @@ func printTeeTimeStatus(client booker.ClientInterface, token string, slot *booke
 	}
 	resp, err := client.CheckTeeTimeStatus(token, checkInput)
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "  tee time status: error %v\n", err)
+		logger.Error("failed to check tee time status", logger.Err(err))
 		return
 	}
 	reason := resp.Reason
 	if reason == "" {
 		reason = "(empty)"
 	}
-	fmt.Printf("  tee time status: Status=%v Reason=%s\n", resp.Status, reason)
+	logger.Info("tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
 }

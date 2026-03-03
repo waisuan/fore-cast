@@ -9,14 +9,18 @@ import (
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/runner"
 	"github.com/waisuan/alfred/internal/slotutil"
 )
 
 func main() {
+	logger.Init()
+	defer logger.Sync()
+
 	if err := run(); err != nil {
-		fmt.Fprintln(os.Stderr, err)
+		logger.Error("cli failed", logger.Err(err))
 		os.Exit(1)
 	}
 }
@@ -38,28 +42,19 @@ func run() error {
 	flag.Usage = usage
 	flag.Parse()
 
-	fmt.Println("--- fore-cast ---")
-	fmt.Printf("  user:           %s\n", *user)
-	fmt.Printf("  date:           %s\n", valueOrDefault(*date, "1 week ahead"))
-	fmt.Printf("  cutoff:         %s\n", valueOrDefault(*cutoff, "8:15"))
-	if *course != "" {
-		fmt.Printf("  course:         %s\n", *course)
-	}
-	fmt.Printf("  status:         %v\n", *statusOnly)
-	fmt.Printf("  slots:          %v\n", *showSlots)
-	fmt.Printf("  retry:          %v\n", *retry)
-	if *retry {
-		fmt.Printf("  retry-interval: %s\n", *retryInterval)
-		fmt.Printf("  timeout:        %s\n", *timeout)
-	}
-	if *runAt != "" {
-		fmt.Printf("  at:             %s\n", *runAt)
-	}
-	fmt.Printf("  debug:          %v\n", *debug)
-	if *ntfy != "" {
-		fmt.Printf("  ntfy:           %s\n", *ntfy)
-	}
-	fmt.Println()
+	logger.Info("cli config",
+		logger.String("user", *user),
+		logger.String("date", valueOrDefault(*date, "1 week ahead")),
+		logger.String("cutoff", valueOrDefault(*cutoff, "8:15")),
+		logger.String("course", valueOrDefault(*course, "")),
+		logger.Bool("status", *statusOnly),
+		logger.Bool("slots", *showSlots),
+		logger.Bool("retry", *retry),
+		logger.Duration("retry_interval", *retryInterval),
+		logger.Duration("timeout", *timeout),
+		logger.String("at", *runAt),
+		logger.Bool("debug", *debug),
+		logger.String("ntfy", *ntfy))
 
 	if *runAt != "" {
 		if err := waitUntil(*runAt); err != nil {
@@ -129,60 +124,63 @@ func run() error {
 }
 
 func printSlots(client *booker.Client, token, txnDate, courseID, cutoffTeeTime string) error {
-	fmt.Printf("Available slots for %s | Course: %s\n", txnDate, courseID)
+	logger.Info("available slots", logger.String("txn_date", txnDate), logger.String("course", courseID))
 	slots, err := client.GetTeeTimeSlots(token, courseID, txnDate)
 	if err != nil {
 		return fmt.Errorf("get tee times: %w", err)
 	}
 	if len(slots) == 0 {
-		fmt.Println("No slots available.")
+		logger.Info("no slots available")
 		return nil
 	}
 	sort.Slice(slots, func(i, j int) bool { return slots[i].TeeTime < slots[j].TeeTime })
 	for _, s := range slots {
-		mark := " "
-		if s.TeeTime < cutoffTeeTime {
-			mark = "*"
-		}
-		fmt.Printf("  %s %s %s (TeeBox %s) %s\n", mark, s.TeeTime, s.Session, s.TeeBox.String(), s.CourseName)
+		eligible := s.TeeTime < cutoffTeeTime
+		logger.Info("slot",
+			logger.Bool("eligible", eligible),
+			logger.String("tee_time", s.TeeTime),
+			logger.String("session", s.Session),
+			logger.String("tee_box", s.TeeBox.String()),
+			logger.String("course_name", s.CourseName))
 	}
-	fmt.Printf("\n* = before %s cutoff (eligible for booking)\n", slotutil.FormatCutoffDisplay(cutoffTeeTime))
+	logger.Info("cutoff info", logger.String("cutoff", slotutil.FormatCutoffDisplay(cutoffTeeTime)))
 	return nil
 }
 
 func printBookingStatus(client *booker.Client, token, accountID string) {
 	resp, err := client.GetBooking(token, accountID, "", "")
 	if err != nil {
-		fmt.Fprintf(os.Stderr, "Could not fetch booking status: %v\n", err)
+		logger.Error("failed to fetch booking status", logger.Err(err))
 		return
 	}
-	fmt.Println("\n--- Current booking status ---")
 	if !resp.Status {
 		if resp.Reason == "" && len(resp.Result) == 0 {
-			fmt.Println("No bookings found.")
+			logger.Info("no bookings found")
 			return
 		}
 		reason := resp.Reason
 		if reason == "" {
 			reason = "(no reason from API)"
 		}
-		fmt.Printf("API Status: false (Reason: %s)\n", reason)
+		logger.Warn("api status false", logger.String("reason", reason))
 		return
 	}
 	if len(resp.Result) == 0 {
-		fmt.Println("No bookings found.")
+		logger.Info("no bookings found")
 		return
 	}
-	for i, b := range resp.Result {
-		if i > 0 {
-			fmt.Println()
-		}
-		fmt.Printf("BookingID: %s\n", b.BookingID)
-		fmt.Printf("  Date:    %s\n", b.TxnDate)
-		fmt.Printf("  Course:  %s (%s)\n", b.CourseName, b.CourseID)
-		fmt.Printf("  Time:    %s  Session: %s  TeeBox: %s\n", b.TeeTime, b.Session, b.TeeBox)
-		fmt.Printf("  Pax:     %d  Holes:   %d\n", b.Pax, b.Hole)
-		fmt.Printf("  Name:    %s\n", b.Name)
+	for _, b := range resp.Result {
+		logger.Info("booking",
+			logger.String("booking_id", b.BookingID),
+			logger.String("date", b.TxnDate),
+			logger.String("course_name", b.CourseName),
+			logger.String("course_id", b.CourseID),
+			logger.String("tee_time", b.TeeTime),
+			logger.String("session", b.Session),
+			logger.String("tee_box", b.TeeBox),
+			logger.Int("pax", b.Pax),
+			logger.Int("holes", b.Hole),
+			logger.String("name", b.Name))
 	}
 }
 
@@ -197,7 +195,7 @@ func waitUntil(at string) error {
 		return nil
 	}
 	d := time.Until(target)
-	fmt.Printf("Waiting until %s (%s from now)...\n", target.Format("15:04"), d.Round(time.Second))
+	logger.Info("waiting until run time", logger.Time("target", target), logger.Duration("duration", d.Round(time.Second)))
 	time.Sleep(d)
 	return nil
 }

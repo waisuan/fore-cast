@@ -2,85 +2,96 @@ package middlewares_test
 
 import (
 	"bytes"
-	"log"
 	"net/http"
 	"net/http/httptest"
 	"strings"
 	"testing"
 
 	"github.com/stretchr/testify/assert"
+	"github.com/stretchr/testify/suite"
 	"github.com/waisuan/alfred/internal/middlewares"
+	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
-func TestErrorMask_5xx_MasksBody(t *testing.T) {
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	defer log.SetOutput(nil)
+type ErrorMaskSuite struct {
+	suite.Suite
+	buf *bytes.Buffer
+}
 
+func (s *ErrorMaskSuite) SetupTest() {
+	s.buf = &bytes.Buffer{}
+	enc := zapcore.NewJSONEncoder(zap.NewProductionEncoderConfig())
+	core := zapcore.NewCore(enc, zapcore.AddSync(s.buf), zapcore.DebugLevel)
+	zap.ReplaceGlobals(zap.New(core))
+}
+
+func (s *ErrorMaskSuite) TearDownTest() {
+	zap.ReplaceGlobals(zap.NewNop())
+}
+
+func (s *ErrorMaskSuite) Test5xx_MasksBody() {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "get presets: connection refused", http.StatusInternalServerError)
 	})
-	handler := middlewares.ErrorMask(inner)
+	handler := middlewares.ErrorMask()(inner)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusInternalServerError, rr.Code)
-	assert.Equal(t, "internal server error\n", rr.Body.String())
-	assert.Contains(t, buf.String(), "get presets: connection refused")
-	assert.Contains(t, buf.String(), "GET /api/v1/preset")
+	assert.Equal(s.T(), http.StatusInternalServerError, rr.Code)
+	assert.Equal(s.T(), "internal server error\n", rr.Body.String())
+	assert.Contains(s.T(), s.buf.String(), "get presets: connection refused")
+	assert.Contains(s.T(), s.buf.String(), "GET")
+	assert.Contains(s.T(), s.buf.String(), "/api/v1/preset")
 }
 
-func TestErrorMask_4xx_PassesThrough(t *testing.T) {
-	t.Parallel()
-
+func (s *ErrorMaskSuite) Test4xx_PassesThrough() {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "invalid body", http.StatusBadRequest)
 	})
-	handler := middlewares.ErrorMask(inner)
+	handler := middlewares.ErrorMask()(inner)
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusBadRequest, rr.Code)
-	assert.True(t, strings.Contains(rr.Body.String(), "invalid body"))
+	assert.Equal(s.T(), http.StatusBadRequest, rr.Code)
+	assert.True(s.T(), strings.Contains(rr.Body.String(), "invalid body"))
 }
 
-func TestErrorMask_2xx_PassesThrough(t *testing.T) {
-	t.Parallel()
-
+func (s *ErrorMaskSuite) Test2xx_PassesThrough() {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		w.Header().Set("Content-Type", "application/json")
 		w.WriteHeader(http.StatusOK)
 		_, _ = w.Write([]byte(`{"ok":true}`))
 	})
-	handler := middlewares.ErrorMask(inner)
+	handler := middlewares.ErrorMask()(inner)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusOK, rr.Code)
-	assert.Equal(t, `{"ok":true}`, rr.Body.String())
+	assert.Equal(s.T(), http.StatusOK, rr.Code)
+	assert.Equal(s.T(), `{"ok":true}`, rr.Body.String())
 }
 
-func TestErrorMask_503_AlsoMasked(t *testing.T) {
-	var buf bytes.Buffer
-	log.SetOutput(&buf)
-	defer log.SetOutput(nil)
-
+func (s *ErrorMaskSuite) Test503_AlsoMasked() {
 	inner := http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "database unavailable", http.StatusServiceUnavailable)
 	})
-	handler := middlewares.ErrorMask(inner)
+	handler := middlewares.ErrorMask()(inner)
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rr := httptest.NewRecorder()
 	handler.ServeHTTP(rr, req)
 
-	assert.Equal(t, http.StatusServiceUnavailable, rr.Code)
-	assert.Equal(t, "internal server error\n", rr.Body.String())
-	assert.Contains(t, buf.String(), "database unavailable")
+	assert.Equal(s.T(), http.StatusServiceUnavailable, rr.Code)
+	assert.Equal(s.T(), "internal server error\n", rr.Body.String())
+	assert.Contains(s.T(), s.buf.String(), "database unavailable")
+}
+
+func TestErrorMaskSuite(t *testing.T) {
+	suite.Run(t, new(ErrorMaskSuite))
 }
