@@ -2,6 +2,7 @@ package handlers
 
 import (
 	"encoding/json"
+	"fmt"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -88,6 +89,20 @@ func (s *SlotsHandlerSuite) TestSlots_GetTeeTimeSlotsError() {
 	rec := httptest.NewRecorder()
 	s.handler.Slots(rec, req)
 	s.Assert().Equal(http.StatusInternalServerError, rec.Code)
+}
+
+func (s *SlotsHandlerSuite) TestSlots_InvalidToken() {
+	s.mockBooker.EXPECT().
+		GetTeeTimeSlots("token", "PLC", "2026/02/25").
+		Return(nil, fmt.Errorf("get tee time: %w", booker.ErrInvalidToken))
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/slots?date=2026/02/25", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Slots(rec, req)
+
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
 func (s *SlotsHandlerSuite) TestSlots_WithCutoffFilter() {

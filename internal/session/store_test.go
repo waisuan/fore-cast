@@ -13,7 +13,7 @@ type StoreSuite struct {
 
 func (s *StoreSuite) TestCreateGetDelete() {
 	store := NewStore(24 * time.Hour)
-	sid, err := store.Create("token123", "user1")
+	sid, err := store.Create("token123", "user1", "pass1")
 	s.Require().NoError(err)
 	s.Require().NotEmpty(sid)
 
@@ -21,6 +21,7 @@ func (s *StoreSuite) TestCreateGetDelete() {
 	s.Require().NotNil(data)
 	s.Assert().Equal("user1", data.UserName)
 	s.Assert().Equal("token123", data.APIToken)
+	s.Assert().Equal("pass1", data.Password)
 
 	store.Delete(sid)
 	data = store.Get(sid)
@@ -29,7 +30,7 @@ func (s *StoreSuite) TestCreateGetDelete() {
 
 func (s *StoreSuite) TestExpiry() {
 	store := NewStore(10 * time.Millisecond)
-	sid, err := store.Create("t", "u")
+	sid, err := store.Create("t", "u", "p")
 	s.Require().NoError(err)
 
 	time.Sleep(15 * time.Millisecond)

@@ -6,9 +6,23 @@ import (
 	"fmt"
 	"io"
 	"net/http"
-	"os"
 	"strings"
+	"time"
+
+	"github.com/waisuan/alfred/internal/logger"
 )
+
+// ClientInterface is the subset of the booking API used by handlers.
+// It allows tests to inject a mock (e.g. via mockgen) instead of the real client.
+//
+//go:generate mockgen -destination=./mock_client.go -package=booker -source=client.go
+type ClientInterface interface {
+	Login(userName, password string) (string, error)
+	GetTeeTimeSlots(token, courseID, txnDate string) ([]TeeTimeSlot, error)
+	GetBooking(token, accountID, bookingID, chitID string) (*GetBookingResponse, error)
+	CheckTeeTimeStatus(token string, input GolfCheckTeeTimeStatusInput) (*CheckTeeTimeStatusResponse, error)
+	BookTeeTime(token string, input GolfNewBooking2Input, debug bool) (*BookingResponse, error)
+}
 
 // Client calls the club booking JSON API. Create with NewClient.
 type Client struct {
@@ -16,16 +30,18 @@ type Client struct {
 	httpClient *http.Client
 }
 
-// NewClient returns a client that uses the default base URL and http.DefaultClient.
+const defaultHTTPTimeout = 30 * time.Second
+
+// NewClient returns a client with the default base URL and 30s timeout.
 func NewClient() *Client {
-	return NewClientWithBaseURL(BaseURL)
+	return NewClientWithOptions(BaseURL, defaultHTTPTimeout)
 }
 
-// NewClientWithBaseURL returns a client that uses the given base URL (e.g. for tests with httptest.Server).
-func NewClientWithBaseURL(baseURL string) *Client {
+// NewClientWithOptions returns a client with the given base URL and timeout.
+func NewClientWithOptions(baseURL string, timeout time.Duration) *Client {
 	return &Client{
 		baseURL:    baseURL,
-		httpClient: http.DefaultClient,
+		httpClient: &http.Client{Timeout: timeout},
 	}
 }
 
@@ -82,6 +98,9 @@ func (c *Client) GetTeeTimeSlots(token, courseID, txnDate string) ([]TeeTimeSlot
 		return nil, fmt.Errorf("parse tee time response: %w", err)
 	}
 	if !resp.Status {
+		if IsInvalidToken(resp.Reason) {
+			return nil, fmt.Errorf("get tee time: %w", ErrInvalidToken)
+		}
 		return nil, fmt.Errorf("get tee time returned Status=false")
 	}
 	return resp.Result, nil
@@ -95,14 +114,14 @@ func (c *Client) BookTeeTime(token string, input GolfNewBooking2Input, debug boo
 		return nil, fmt.Errorf("marshal booking request: %w", err)
 	}
 	if debug {
-		fmt.Fprintf(os.Stderr, "[debug] booking request body:\n%s\n", string(jsonBody))
+		logger.Debug("booking request", logger.String("body", string(jsonBody)))
 	}
 	raw, err := c.doWithBody(jsonBody, token)
 	if err != nil {
 		return nil, fmt.Errorf("booking request: %w", err)
 	}
 	if debug {
-		fmt.Fprintf(os.Stderr, "[debug] booking response body:\n%s\n", string(raw))
+		logger.Debug("booking response", logger.String("body", string(raw)))
 	}
 	var resp BookingResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {

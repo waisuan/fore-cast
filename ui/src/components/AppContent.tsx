@@ -4,6 +4,7 @@ import { ReactNode } from 'react';
 import { useAuth } from '@/contexts/AuthContext';
 import Header from './Header';
 import LoginPage from './LoginPage';
+import Spinner from './Spinner';
 
 export default function AppContent({ children }: { children: ReactNode }) {
   const { isAuthenticated, isLoading } = useAuth();
@@ -11,7 +12,7 @@ export default function AppContent({ children }: { children: ReactNode }) {
   if (isLoading) {
     return (
       <div className="flex min-h-screen items-center justify-center">
-        <p className="text-foreground">Loading...</p>
+        <Spinner className="h-8 w-8" />
       </div>
     );
   }

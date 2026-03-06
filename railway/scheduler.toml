@@ -1,0 +1,12 @@
+# Scheduler service – runs preset jobs on a cron schedule.
+# In Railway: connect this service to the repo, set Config File Path to /railway/scheduler.toml.
+# Root Directory: / (default)
+
+[build]
+buildCommand = "go build -o bin/fore-cast-scheduler ./cmd/scheduler"
+watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod", "go.sum", "railway/scheduler.toml"]
+
+[deploy]
+startCommand = "bin/fore-cast-scheduler"
+restartPolicyType = "never"
+cronSchedule = "55 13 * * *"  # 9:55 PM Malaysia

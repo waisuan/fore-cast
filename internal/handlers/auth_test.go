@@ -102,7 +102,7 @@ func (s *AuthHandlerSuite) TestLogin_LoginError() {
 }
 
 func (s *AuthHandlerSuite) TestLogout() {
-	sid, err := s.store.Create("token", "user")
+	sid, err := s.store.Create("token", "user", "pass")
 	s.Require().NoError(err)
 	s.handler = &AuthHandler{Store: s.store}
 

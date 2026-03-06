@@ -10,6 +10,7 @@ const userKey contextKey = "user"
 type User struct {
 	UserName string
 	APIToken string
+	Password string
 }
 
 // WithUser returns a context with the user attached.

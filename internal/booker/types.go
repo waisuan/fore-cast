@@ -96,6 +96,7 @@ type TeeTimeSlot struct {
 type GetTeeTimeResponse struct {
 	Result []TeeTimeSlot `json:"Result,omitempty"`
 	Status bool          `json:"Status"`
+	Reason string        `json:"Reason,omitempty"`
 }
 
 // --- Booking (GolfNewBooking2) ---

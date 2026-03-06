@@ -3,25 +3,32 @@ import { API_BASE_URL, API_ENDPOINTS } from '@/config/api';
 export class ApiError extends Error {
   constructor(
     message: string,
-    public status: number
+    public status: number,
   ) {
     super(message);
     this.name = 'ApiError';
   }
 }
 
+let onUnauthorized: (() => void) | null = null;
+
+export function setOnUnauthorized(fn: (() => void) | null) {
+  onUnauthorized = fn;
+}
+
 async function request<T>(
   endpoint: string,
-  options: RequestInit = {}
+  options: RequestInit = {},
 ): Promise<T> {
   const url = `${API_BASE_URL}${endpoint}`;
+  const { headers: optHeaders, ...rest } = options;
   const config: RequestInit = {
     credentials: 'include',
+    ...rest,
     headers: {
       'Content-Type': 'application/json',
-      ...options.headers,
+      ...(optHeaders as Record<string, string>),
     },
-    ...options,
   };
   const res = await fetch(url, config);
   let body: unknown;
@@ -32,10 +39,18 @@ async function request<T>(
     body = text;
   }
   if (!res.ok) {
+    if (res.status === 401 && onUnauthorized) {
+      onUnauthorized();
+    }
     const msg =
       (body && typeof body === 'object' && 'message' in body
         ? String((body as { message: unknown }).message)
-        : null) || res.statusText || `HTTP ${res.status}`;
+        : null) ||
+      (typeof body === 'string' && body.trim().length > 0 && body.length < 500
+        ? body.trim()
+        : null) ||
+      res.statusText ||
+      `HTTP ${res.status}`;
     throw new ApiError(msg, res.status);
   }
   return body as T;
@@ -46,6 +61,11 @@ export const api = {
   post: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'POST',
+      body: body != null ? JSON.stringify(body) : undefined,
+    }),
+  put: <T>(path: string, body?: unknown) =>
+    request<T>(path, {
+      method: 'PUT',
       body: body != null ? JSON.stringify(body) : undefined,
     }),
 };

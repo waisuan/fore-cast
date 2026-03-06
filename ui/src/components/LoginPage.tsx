@@ -15,10 +15,13 @@ export default function LoginPage() {
     e.preventDefault();
     setError('');
     setSubmitting(true);
-    const result = await login(username, password);
-    setSubmitting(false);
-    if (!result.success) {
-      setError(result.error || 'Login failed');
+    try {
+      const result = await login(username, password);
+      if (!result.success) {
+        setError(result.error || 'Login failed');
+      }
+    } finally {
+      setSubmitting(false);
     }
   }
 
@@ -75,11 +78,12 @@ export default function LoginPage() {
             </div>
           </div>
           {error && (
-            <p className="text-sm text-red-600 dark:text-red-400">{error}</p>
+            <p role="alert" className="text-sm text-red-600 dark:text-red-400">{error}</p>
           )}
           <button
             type="submit"
             disabled={submitting}
+            aria-busy={submitting}
             className="w-full rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 focus:outline-none focus:ring-2 focus:ring-blue-500 disabled:opacity-50"
           >
             {submitting ? 'Signing in…' : 'Sign in'}

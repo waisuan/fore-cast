@@ -73,6 +73,21 @@ func (s *BookingHandlerSuite) TestGetBooking_GetBookingError() {
 	s.Assert().Equal(http.StatusInternalServerError, rec.Code)
 }
 
+func (s *BookingHandlerSuite) TestGetBooking_InvalidToken() {
+	resp := &booker.GetBookingResponse{Status: false, Reason: "CODE103 - Invalid Token", Result: nil}
+	s.mockBooker.EXPECT().
+		GetBooking("token", "u", "", "").
+		Return(resp, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/booking", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.GetBooking(rec, req)
+
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
+}
+
 func (s *BookingHandlerSuite) TestCheckStatus_Success() {
 	resp := &booker.CheckTeeTimeStatusResponse{Status: true}
 	s.mockBooker.EXPECT().
@@ -103,6 +118,24 @@ func (s *BookingHandlerSuite) TestCheckStatus_InvalidBody() {
 	rec := httptest.NewRecorder()
 	s.handler.CheckStatus(rec, req)
 	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *BookingHandlerSuite) TestCheckStatus_InvalidToken() {
+	s.mockBooker.EXPECT().
+		CheckTeeTimeStatus("token", gomock.Any()).
+		Return(&booker.CheckTeeTimeStatusResponse{Status: false, Reason: "CODE103 - Invalid Token"}, nil)
+
+	body, _ := json.Marshal(CheckStatusRequest{
+		CourseID: "PLC", TxnDate: "2026/02/25", Session: "1", TeeBox: "1", TeeTime: "07:00",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/check-status", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.CheckStatus(rec, req)
+
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
 func (s *BookingHandlerSuite) TestBook_Success() {
@@ -165,41 +198,43 @@ func (s *BookingHandlerSuite) TestBook_BookReturnsFailure() {
 	s.Assert().Equal(http.StatusConflict, rec.Code)
 }
 
-func (s *BookingHandlerSuite) TestAuto_DateRequired() {
-	body, _ := json.Marshal(AutoRequest{})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/auto", bytes.NewReader(body))
+func (s *BookingHandlerSuite) TestBook_InvalidTokenFromCheckStatus() {
+	s.mockBooker.EXPECT().
+		CheckTeeTimeStatus("token", gomock.Any()).
+		Return(&booker.CheckTeeTimeStatusResponse{Status: false, Reason: "CODE103 - Invalid Token"}, nil)
+
+	body, _ := json.Marshal(BookRequest{
+		CourseID: "PLC", TxnDate: "2026/02/25", Session: "1", TeeBox: "1", TeeTime: "07:00",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/book", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(context.WithUser(req.Context(), s.user))
 	rec := httptest.NewRecorder()
-	s.handler.Auto(rec, req)
-	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+	s.handler.Book(rec, req)
+
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
-func (s *BookingHandlerSuite) TestAuto_SuccessOnFirstSlot() {
-	slots := []booker.TeeTimeSlot{
-		{CourseID: "PLC", TeeTime: "07:00", Session: "1", TeeBox: booker.StringOrNumber("1"), TxnDate: "2026/02/25"},
-	}
-	s.mockBooker.EXPECT().
-		GetTeeTimeSlots("token", "PLC", "2026/02/25").
-		Return(slots, nil)
+func (s *BookingHandlerSuite) TestBook_InvalidTokenFromBook() {
 	s.mockBooker.EXPECT().
 		CheckTeeTimeStatus("token", gomock.Any()).
 		Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
 	s.mockBooker.EXPECT().
 		BookTeeTime("token", gomock.Any(), false).
-		Return(&booker.BookingResponse{Status: true, Result: []booker.BookingResultItem{{Status: true, BookingID: "A1"}}}, nil)
+		Return(&booker.BookingResponse{Status: false, Reason: "CODE103 - Invalid Token"}, nil)
 
-	body, _ := json.Marshal(AutoRequest{Date: "2026/02/25", Cutoff: "8:15", Retries: 1})
-	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/auto", bytes.NewReader(body))
+	body, _ := json.Marshal(BookRequest{
+		CourseID: "PLC", TxnDate: "2026/02/25", Session: "1", TeeBox: "1", TeeTime: "07:00",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/book", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	req = req.WithContext(context.WithUser(req.Context(), s.user))
 	rec := httptest.NewRecorder()
-	s.handler.Auto(rec, req)
+	s.handler.Book(rec, req)
 
-	s.Require().Equal(http.StatusOK, rec.Code)
-	var out map[string]string
-	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&out))
-	s.Assert().Equal("A1", out["bookingID"])
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
 func TestBookingHandlerSuite(t *testing.T) {

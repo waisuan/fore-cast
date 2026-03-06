@@ -1,0 +1,12 @@
+# Cleanup service – prunes old history rows on a cron schedule.
+# In Railway: connect this service to the repo, set Config File Path to /railway/cleanup.toml.
+# Root Directory: / (default)
+
+[build]
+buildCommand = "go build -o bin/fore-cast-cleanup ./cmd/cleanup"
+watchPatterns = ["cmd/**", "internal/**", "migrations/**", "scripts/**", "go.mod", "go.sum", "railway/cleanup.toml"]
+
+[deploy]
+startCommand = "bin/fore-cast-cleanup"
+restartPolicyType = "never"
+cronSchedule = "0 4 * * *"  # 4:00 AM UTC daily
