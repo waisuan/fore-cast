@@ -67,7 +67,8 @@ func run(d *deps.Dependencies) error {
 				logger.String("course", p.Course.String),
 				logger.String("cutoff", p.Cutoff),
 				logger.String("retry", p.RetryInterval),
-				logger.String("timeout", p.Timeout))
+				logger.String("timeout", p.Timeout),
+				logger.Int("max_parallel_slots", p.MaxParallelSlots))
 			if err := processPreset(d, p); err != nil {
 				logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
 				mu.Lock()
