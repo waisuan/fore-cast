@@ -4,16 +4,18 @@ import (
 	"encoding/json"
 	"net/http"
 
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
+	"github.com/waisuan/alfred/internal/credentials"
+	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/middlewares"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 // AuthHandler handles login, logout, and me.
 type AuthHandler struct {
-	Booker booker.ClientInterface
-	Store  *session.Store
+	Credentials   credentials.Service
+	Store         *session.Store
+	EncryptionKey string
 }
 
 // LoginRequest is the body for POST /api/v1/auth/login.
@@ -29,7 +31,8 @@ type LoginResponse struct {
 	} `json:"user"`
 }
 
-// Login handles POST /api/v1/auth/login.
+// Login handles POST /api/v1/auth/login. Validates credentials against stored
+// preset (no 3rd party call). Users must be registered first via /admin/register.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -44,12 +47,29 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "username and password required", http.StatusBadRequest)
 		return
 	}
-	token, err := h.Booker.Login(req.Username, req.Password)
+	c, err := h.Credentials.Get(req.Username)
 	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if c == nil {
+		http.Error(w, "user not registered", http.StatusUnauthorized)
+		return
+	}
+	if h.EncryptionKey == "" {
+		http.Error(w, "encryption key not configured", http.StatusInternalServerError)
+		return
+	}
+	storedPassword, err := crypto.Decrypt(c.PasswordEnc, h.EncryptionKey)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if storedPassword != req.Password {
 		http.Error(w, "invalid credentials", http.StatusUnauthorized)
 		return
 	}
-	sid, err := h.Store.Create(token, req.Username, req.Password)
+	sid, err := h.Store.Create(req.Username)
 	if err != nil {
 		http.Error(w, err.Error(), http.StatusInternalServerError)
 		return

@@ -30,6 +30,10 @@ type Config struct {
 	// Encryption (for stored credentials)
 	EncryptionKey string `env:"ENCRYPTION_KEY"`
 
+	// Admin (for admin-only registration)
+	AdminUser     string `env:"ADMIN_USER"`
+	AdminPassword string `env:"ADMIN_PASSWORD"`
+
 	// HTTP client timeouts (for outbound calls)
 	BookerHTTPTimeout time.Duration `env:"BOOKER_HTTP_TIMEOUT" envDefault:"30s"`
 	NotifyHTTPTimeout time.Duration `env:"NOTIFY_HTTP_TIMEOUT" envDefault:"10s"`
@@ -38,7 +42,7 @@ type Config struct {
 	// Scheduler
 	MaxConcurrentPresets int    `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
 	MaxParallelSlots     int    `env:"MAX_PARALLEL_SLOTS" envDefault:"5"` // max slots to try in parallel per preset
-	SchedulerTxnDate     string `env:"SCHEDULER_TXN_DATE"`                 // override target date (YYYY/MM/DD); empty = 1 week ahead
+	SchedulerTxnDate     string `env:"SCHEDULER_TXN_DATE"`                // override target date (YYYY/MM/DD); empty = 1 week ahead
 
 	// Dry-run (scheduler only): mock Booker API, no real HTTP calls.
 	// BOOKER_DRY_RUN_SCENARIO: success | timeout | empty (default: timeout)

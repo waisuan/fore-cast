@@ -25,8 +25,6 @@ func SessionAuth(store *session.Store) func(http.Handler) http.Handler {
 			}
 			ctx := context.WithUser(r.Context(), &context.User{
 				UserName: data.UserName,
-				APIToken: data.APIToken,
-				Password: data.Password,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

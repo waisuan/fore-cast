@@ -22,8 +22,11 @@ func New(d *deps.Dependencies) http.Handler {
 		_, _ = w.Write([]byte("ok"))
 	}).Methods(http.MethodGet)
 
-	authHandler := &handlers.AuthHandler{Booker: d.Booker, Store: d.Store}
+	authHandler := &handlers.AuthHandler{Credentials: d.Credentials, Store: d.Store, EncryptionKey: d.Config.EncryptionKey}
 	r.HandleFunc("/api/v1/auth/login", authHandler.Login).Methods(http.MethodPost)
+
+	adminHandler := &handlers.AdminHandler{Config: d.Config, Booker: d.Booker, Credentials: d.Credentials}
+	r.HandleFunc("/api/v1/admin/register", adminHandler.Register).Methods(http.MethodPost)
 
 	api := r.PathPrefix("/api/v1/").Subrouter()
 	api.Use(middlewares.SessionAuth(d.Store))
@@ -31,18 +34,20 @@ func New(d *deps.Dependencies) http.Handler {
 	api.HandleFunc("/auth/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/auth/me", authHandler.Me).Methods(http.MethodGet)
 
+	// Routes that need 3rd party token (TokenRefresh obtains it on-demand from credentials)
+	bookerAPI := api.PathPrefix("").Subrouter()
+	bookerAPI.Use(middlewares.TokenRefresh(d.Booker, d.Credentials, d.Config.EncryptionKey))
 	slotsHandler := &handlers.SlotsHandler{Booker: d.Booker}
-	api.HandleFunc("/slots", slotsHandler.Slots).Methods(http.MethodGet)
-
+	bookerAPI.HandleFunc("/slots", slotsHandler.Slots).Methods(http.MethodGet)
 	bookingHandler := &handlers.BookingHandler{Booker: d.Booker}
-	api.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
-	api.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
-	api.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
+	bookerAPI.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
+	bookerAPI.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
+	bookerAPI.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
 
 	historyHandler := &handlers.HistoryHandler{Service: d.History}
 	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
 
-	presetHandler := &handlers.PresetHandler{Service: d.Preset, EncryptionKey: d.Config.EncryptionKey}
+	presetHandler := &handlers.PresetHandler{Service: d.Preset}
 	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
 	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
 

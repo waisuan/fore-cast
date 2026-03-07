@@ -1,4 +1,12 @@
 /**
+ * Return today's date in YYYY-MM-DD format (local timezone).
+ */
+export function todayIso(): string {
+  const d = new Date();
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
  * Convert HTML date input (YYYY-MM-DD) to API format (YYYY/MM/DD).
  */
 export function toApiDate(isoDate: string): string {

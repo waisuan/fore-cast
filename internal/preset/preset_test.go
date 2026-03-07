@@ -63,12 +63,15 @@ func (s *ServiceSuite) TearDownSuite() {
 
 func (s *ServiceSuite) TearDownTest() {
 	_, _ = s.conn.Exec("DELETE FROM booking_presets")
+	_, _ = s.conn.Exec("DELETE FROM user_credentials")
 }
 
 func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
-	err := s.svc.UpsertPreset(preset.Preset{
+	_, err := s.conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "encrypted-pw")
+	s.Require().NoError(err)
+
+	err = s.svc.UpsertPreset(preset.Preset{
 		UserName:      "alice",
-		PasswordEnc:   "encrypted-pw",
 		Course:        sql.NullString{String: "PLC", Valid: true},
 		Cutoff:        "8:15",
 		RetryInterval: "5s",
@@ -82,7 +85,6 @@ func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
 	s.Require().NoError(err)
 	s.Require().NotNil(p)
 	s.Assert().Equal("alice", p.UserName)
-	s.Assert().Equal("encrypted-pw", p.PasswordEnc)
 	s.Assert().Equal("PLC", p.Course.String)
 	s.Assert().True(p.Course.Valid)
 	s.Assert().Equal("8:15", p.Cutoff)
@@ -94,9 +96,11 @@ func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
 }
 
 func (s *ServiceSuite) TestUpsertPreset_Update() {
-	err := s.svc.UpsertPreset(preset.Preset{
+	_, err := s.conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "enc")
+	s.Require().NoError(err)
+
+	err = s.svc.UpsertPreset(preset.Preset{
 		UserName:      "alice",
-		PasswordEnc:   "v1",
 		Cutoff:        "8:15",
 		RetryInterval: "5s",
 		Timeout:       "10m",
@@ -106,7 +110,6 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName:      "alice",
-		PasswordEnc:   "v2",
 		Course:        sql.NullString{String: "BRC", Valid: true},
 		Cutoff:        "7:30",
 		RetryInterval: "3s",
@@ -118,7 +121,6 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 	p, err := s.svc.GetPreset("alice")
 	s.Require().NoError(err)
 	s.Require().NotNil(p)
-	s.Assert().Equal("v2", p.PasswordEnc)
 	s.Assert().Equal("BRC", p.Course.String)
 	s.Assert().Equal("7:30", p.Cutoff)
 	s.Assert().Equal("3s", p.RetryInterval)
@@ -133,20 +135,23 @@ func (s *ServiceSuite) TestGetPreset_NotFound() {
 }
 
 func (s *ServiceSuite) TestGetEnabledPresets() {
-	err := s.svc.UpsertPreset(preset.Preset{
-		UserName: "alice", PasswordEnc: "enc1", Cutoff: "8:15",
+	_, err := s.conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ('alice', 'enc1'), ('bob', 'enc2'), ('carol', 'enc3')")
+	s.Require().NoError(err)
+
+	err = s.svc.UpsertPreset(preset.Preset{
+		UserName: "alice", Cutoff: "8:15",
 		RetryInterval: "5s", Timeout: "10m", Enabled: true,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
-		UserName: "bob", PasswordEnc: "enc2", Cutoff: "7:30",
+		UserName: "bob", Cutoff: "7:30",
 		RetryInterval: "3s", Timeout: "5m", Enabled: false,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
-		UserName: "carol", PasswordEnc: "enc3", Cutoff: "8:00",
+		UserName: "carol", Cutoff: "8:00",
 		RetryInterval: "5s", Timeout: "10m", Enabled: true,
 	})
 	s.Require().NoError(err)
@@ -189,8 +194,11 @@ func TestUpdatePresetRunStatus(t *testing.T) {
 
 	svc := preset.NewService(conn)
 
+	_, err = conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "enc")
+	require.NoError(t, err)
+
 	err = svc.UpsertPreset(preset.Preset{
-		UserName: "alice", PasswordEnc: "enc", Cutoff: "8:15",
+		UserName: "alice", Cutoff: "8:15",
 		RetryInterval: "1s", Timeout: "10m", Enabled: true,
 	})
 	require.NoError(t, err)

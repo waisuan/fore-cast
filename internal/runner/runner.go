@@ -124,11 +124,18 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 	return result, fmt.Errorf("%s", msg)
 }
 
+// slotTag returns a compact identifier for log lines, e.g. "[7:00 AM S1 T1]".
+func slotTag(slot *booker.TeeTimeSlot) string {
+	t := slotutil.FormatCutoffDisplay(slot.TeeTime)
+	return fmt.Sprintf("[%s S%s T%s]", t, slot.Session, slot.TeeBox.String())
+}
+
 // runWorker runs the booking loop for one slot. When cfg.Retry is true, it continually
 // retries (check, book) until it succeeds or ctx is cancelled (neighbour won or timeout).
 func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, target booker.TeeTimeSlot,
 	once *sync.Once, outcomeCh chan<- Result, cancel context.CancelFunc) {
 	slot := &target
+	tag := slotTag(slot)
 	timer := time.NewTimer(cfg.RetryInterval)
 	defer timer.Stop()
 
@@ -139,12 +146,12 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, t
 		default:
 		}
 
-		logger.Info("slot",
+		logger.Info(tag+" slot",
 			logger.String("tee_time", slot.TeeTime),
 			logger.String("session", slot.Session),
 			logger.String("tee_box", slot.TeeBox.String()))
-		if err := checkTeeTimeStatus(client, cfg.Token, slot, cfg.TxnDate, cfg.UserName); err != nil {
-			logger.Error("failed to check tee time status", logger.String("tee_time", slot.TeeTime), logger.Err(err))
+		if err := checkTeeTimeStatus(client, cfg.Token, slot, tag, cfg.TxnDate, cfg.UserName); err != nil {
+			logger.Error(tag+" failed to check tee time status", logger.Err(err))
 			if !cfg.Retry {
 				return
 			}
@@ -163,14 +170,14 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, t
 		default:
 		}
 
-		booked, bookingID, bookErr := tryBookSlot(client, cfg, slot)
+		booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 		if bookErr != nil {
-			logger.Error("failed to book slot", logger.String("tee_time", slot.TeeTime), logger.Err(bookErr))
+			logger.Error(tag+" failed to book slot", logger.Err(bookErr))
 		}
 		if booked {
 			msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s",
 				slot.TeeTime, slot.Session, slot.TeeBox.String(), cfg.TxnDate, cfg.CourseID, bookingID)
-			logger.Info("booked", logger.String("message", msg))
+			logger.Info(tag + " " + msg)
 			once.Do(func() {
 				cancel()
 				outcomeCh <- Result{
@@ -208,8 +215,8 @@ func resetTimer(t *time.Timer, d time.Duration) {
 	t.Reset(d)
 }
 
-func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTimeSlot) (bool, string, error) {
-	logger.Info("attempting to book", logger.Time("at", time.Now()))
+func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTimeSlot, tag string) (bool, string, error) {
+	logger.Info(tag+" attempting to book", logger.Time("at", time.Now()))
 	input := booker.GolfNewBooking2Input{
 		CourseID:   slot.CourseID,
 		TxnDate:    cfg.TxnDate,
@@ -233,7 +240,7 @@ func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTime
 
 // checkTeeTimeStatus calls the API to validate the slot. Returns an error if the check fails;
 // the caller should skip booking and retry when that happens.
-func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booker.TeeTimeSlot, txnDate, userName string) error {
+func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booker.TeeTimeSlot, tag, txnDate, userName string) error {
 	checkInput := booker.GolfCheckTeeTimeStatusInput{
 		CourseID:  slot.CourseID,
 		TxnDate:   txnDate,
@@ -251,6 +258,6 @@ func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booke
 	if reason == "" {
 		reason = "(empty)"
 	}
-	logger.Info("tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
+	logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
 	return nil
 }

@@ -27,11 +27,8 @@ type PresetHandlerSuite struct {
 func (s *PresetHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockSvc = preset.NewMockService(s.ctrl)
-	s.handler = &PresetHandler{
-		Service:       s.mockSvc,
-		EncryptionKey: "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef",
-	}
-	s.user = &context.User{UserName: "u", APIToken: "token", Password: "secret"}
+	s.handler = &PresetHandler{Service: s.mockSvc}
+	s.user = &context.User{UserName: "u", APIToken: "token"}
 }
 
 func (s *PresetHandlerSuite) TearDownTest() {
@@ -83,7 +80,6 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 		GetPreset("u").
 		Return(&preset.Preset{
 			UserName:      "u",
-			PasswordEnc:   "enc-pw",
 			Course:        sql.NullString{String: "PLC", Valid: true},
 			Cutoff:        "7:30",
 			RetryInterval: "2s",
@@ -120,7 +116,6 @@ func (s *PresetHandlerSuite) TestGetPreset_Found_NoTopic() {
 		GetPreset("u").
 		Return(&preset.Preset{
 			UserName:      "u",
-			PasswordEnc:   "enc-pw",
 			Cutoff:        "8:15",
 			RetryInterval: "1s",
 			Timeout:       "10m",
@@ -183,7 +178,6 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 		UpsertPreset(gomock.Any()).
 		DoAndReturn(func(p preset.Preset) error {
 			s.Assert().Equal("u", p.UserName)
-			s.Assert().NotEmpty(p.PasswordEnc)
 			s.Assert().Equal("PLC", p.Course.String)
 			s.Assert().Equal("7:30", p.Cutoff)
 			s.Assert().Equal("2s", p.RetryInterval)
@@ -209,32 +203,6 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 	var resp map[string]string
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
 	s.Assert().Equal("saved", resp["status"])
-}
-
-func (s *PresetHandlerSuite) TestSavePreset_NoSessionPassword() {
-	user := &context.User{UserName: "u", APIToken: "token", Password: ""}
-
-	body, _ := json.Marshal(PresetRequest{Enabled: true})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), user))
-	rec := httptest.NewRecorder()
-	s.handler.SavePreset(rec, req)
-
-	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
-}
-
-func (s *PresetHandlerSuite) TestSavePreset_NoEncryptionKey() {
-	s.handler.EncryptionKey = ""
-
-	body, _ := json.Marshal(PresetRequest{Enabled: true})
-	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
-	req.Header.Set("Content-Type", "application/json")
-	req = req.WithContext(context.WithUser(req.Context(), s.user))
-	rec := httptest.NewRecorder()
-	s.handler.SavePreset(rec, req)
-
-	s.Assert().Equal(http.StatusInternalServerError, rec.Code)
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_DBError() {
@@ -348,8 +316,8 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_GeneratesTopic()
 
 func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistingTopic() {
 	s.mockSvc.EXPECT().GetPreset("u").Return(&preset.Preset{
-		PasswordEnc: "enc-pw",
-		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
+		UserName:  "u",
+		NtfyTopic: sql.NullString{String: "fore-cast-u-existing", Valid: true},
 	}, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
@@ -373,8 +341,8 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistin
 
 func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {
 	s.mockSvc.EXPECT().GetPreset("u").Return(&preset.Preset{
-		PasswordEnc: "enc-pw",
-		NtfyTopic:   sql.NullString{String: "fore-cast-u-existing", Valid: true},
+		UserName:  "u",
+		NtfyTopic: sql.NullString{String: "fore-cast-u-existing", Valid: true},
 	}, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).

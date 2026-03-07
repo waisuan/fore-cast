@@ -7,15 +7,13 @@ import (
 	"time"
 
 	"github.com/waisuan/alfred/internal/context"
-	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/preset"
 )
 
 // PresetHandler handles /api/v1/preset endpoints.
 type PresetHandler struct {
-	Service       preset.Service
-	EncryptionKey string
+	Service preset.Service
 }
 
 // PresetDefaults contains the server-side default values for preset fields.
@@ -116,24 +114,10 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "unauthorized", http.StatusUnauthorized)
 		return
 	}
-	if u.Password == "" {
-		http.Error(w, "session missing password — please log in again", http.StatusUnauthorized)
-		return
-	}
-	if h.EncryptionKey == "" {
-		http.Error(w, "encryption key not configured", http.StatusInternalServerError)
-		return
-	}
 
 	var req PresetRequest
 	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
 		http.Error(w, "invalid body", http.StatusBadRequest)
-		return
-	}
-
-	passwordEnc, encErr := crypto.Encrypt(u.Password, h.EncryptionKey)
-	if encErr != nil {
-		http.Error(w, encErr.Error(), http.StatusInternalServerError)
 		return
 	}
 
@@ -147,7 +131,6 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	p := preset.Preset{
 		UserName:      u.UserName,
-		PasswordEnc:   passwordEnc,
 		Course:        sql.NullString{String: req.Course, Valid: req.Course != ""},
 		Cutoff:        req.Cutoff,
 		RetryInterval: req.RetryInterval,

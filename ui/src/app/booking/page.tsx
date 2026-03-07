@@ -25,10 +25,24 @@ interface BookingResponse {
   Result?: BookingItem[];
 }
 
+interface PresetStatus {
+  last_run_status: string;
+}
+
 export default function BookingPage() {
   const { addToast } = useToast();
+  const [presetStatus, setPresetStatus] = useState<PresetStatus | null>(null);
   const [data, setData] = useState<BookingResponse | null>(null);
   const [loading, setLoading] = useState(true);
+
+  const loadPreset = useCallback(async () => {
+    try {
+      const res = await api.get<PresetStatus & { defaults?: unknown }>(API_ENDPOINTS.preset);
+      setPresetStatus({ last_run_status: res.last_run_status ?? 'idle' });
+    } catch {
+      setPresetStatus(null);
+    }
+  }, []);
 
   const load = useCallback(async () => {
     setLoading(true);
@@ -43,31 +57,37 @@ export default function BookingPage() {
   }, [addToast]);
 
   useEffect(() => {
-    load();
-  }, [load]);
+    loadPreset();
+  }, [loadPreset]);
+
+  useEffect(() => {
+    if (presetStatus?.last_run_status === 'running') {
+      setLoading(false);
+      return;
+    }
+    if (presetStatus !== null) {
+      load();
+    }
+  }, [presetStatus, load]);
+
+  const schedulerRunning = presetStatus?.last_run_status === 'running';
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-          My bookings
-        </h1>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          aria-busy={loading}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-        >
-          Refresh
-        </button>
-      </div>
-      {loading && (
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        My bookings
+      </h1>
+      {schedulerRunning && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
+          Scheduler is running. Slots and bookings require 3rd party access and are unavailable. Check back later.
+        </div>
+      )}
+      {!schedulerRunning && loading && (
         <div className="flex justify-center py-8">
           <Spinner className="h-6 w-6" />
         </div>
       )}
-      {!loading && data && (
+      {!schedulerRunning && !loading && data && (
         <>
           {!data.Status && data.Reason && (
             <p className="text-gray-600 dark:text-gray-400">{data.Reason}</p>

@@ -7,11 +7,10 @@ import (
 	"time"
 )
 
-// Data holds session data for an authenticated user.
+// Data holds session data for an authenticated user. Session stores only
+// identity; 3rd party tokens are obtained on-demand when needed.
 type Data struct {
-	APIToken  string
 	UserName  string
-	Password  string
 	ExpiresAt time.Time
 }
 
@@ -73,7 +72,7 @@ func (s *Store) evictExpired() {
 }
 
 // Create creates a new session and returns its ID.
-func (s *Store) Create(apiToken, userName, password string) (string, error) {
+func (s *Store) Create(userName string) (string, error) {
 	id := make([]byte, 16)
 	if _, err := rand.Read(id); err != nil {
 		return "", err
@@ -82,9 +81,7 @@ func (s *Store) Create(apiToken, userName, password string) (string, error) {
 	s.mu.Lock()
 	defer s.mu.Unlock()
 	s.sessions[sid] = &Data{
-		APIToken:  apiToken,
 		UserName:  userName,
-		Password:  password,
 		ExpiresAt: time.Now().Add(s.ttl),
 	}
 	return sid, nil

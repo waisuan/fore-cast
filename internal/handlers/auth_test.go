@@ -10,25 +10,28 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
+	"github.com/waisuan/alfred/internal/credentials"
+	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/middlewares"
 	"github.com/waisuan/alfred/internal/session"
 )
 
+const testEncryptionKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
 type AuthHandlerSuite struct {
 	suite.Suite
-	ctrl       *gomock.Controller
-	mockBooker *booker.MockClientInterface
-	store      *session.Store
-	handler    *AuthHandler
+	ctrl      *gomock.Controller
+	mockCreds *credentials.MockService
+	store     *session.Store
+	handler   *AuthHandler
 }
 
 func (s *AuthHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
-	s.mockBooker = booker.NewMockClientInterface(s.ctrl)
+	s.mockCreds = credentials.NewMockService(s.ctrl)
 	s.store = session.NewStore(24 * time.Hour)
-	s.handler = &AuthHandler{Booker: s.mockBooker, Store: s.store}
+	s.handler = &AuthHandler{Credentials: s.mockCreds, Store: s.store, EncryptionKey: testEncryptionKey}
 }
 
 func (s *AuthHandlerSuite) TearDownTest() {
@@ -36,9 +39,11 @@ func (s *AuthHandlerSuite) TearDownTest() {
 }
 
 func (s *AuthHandlerSuite) TestLogin_Success() {
-	s.mockBooker.EXPECT().
-		Login("alice", "secret").
-		Return("token123", nil)
+	passwordEnc, err := crypto.Encrypt("secret", testEncryptionKey)
+	s.Require().NoError(err)
+	s.mockCreds.EXPECT().
+		Get("alice").
+		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc}, nil)
 
 	body, _ := json.Marshal(LoginRequest{Username: "alice", Password: "secret"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
@@ -88,12 +93,27 @@ func (s *AuthHandlerSuite) TestLogin_UsernameAndPasswordRequired() {
 	s.Assert().Equal(http.StatusBadRequest, rec.Code)
 }
 
-func (s *AuthHandlerSuite) TestLogin_LoginError() {
-	s.mockBooker.EXPECT().
-		Login("bad", "bad").
-		Return("", http.ErrHandlerTimeout)
+func (s *AuthHandlerSuite) TestLogin_UserNotRegistered() {
+	s.mockCreds.EXPECT().
+		Get("unknown").
+		Return(nil, nil)
 
-	body, _ := json.Marshal(LoginRequest{Username: "bad", Password: "bad"})
+	body, _ := json.Marshal(LoginRequest{Username: "unknown", Password: "any"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	rec := httptest.NewRecorder()
+	s.handler.Login(rec, req)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+}
+
+func (s *AuthHandlerSuite) TestLogin_InvalidCredentials() {
+	passwordEnc, err := crypto.Encrypt("correct", testEncryptionKey)
+	s.Require().NoError(err)
+	s.mockCreds.EXPECT().
+		Get("alice").
+		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc}, nil)
+
+	body, _ := json.Marshal(LoginRequest{Username: "alice", Password: "wrong"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
 	rec := httptest.NewRecorder()
@@ -102,9 +122,9 @@ func (s *AuthHandlerSuite) TestLogin_LoginError() {
 }
 
 func (s *AuthHandlerSuite) TestLogout() {
-	sid, err := s.store.Create("token", "user", "pass")
+	sid, err := s.store.Create("user")
 	s.Require().NoError(err)
-	s.handler = &AuthHandler{Store: s.store}
+	s.handler = &AuthHandler{Credentials: s.mockCreds, Store: s.store, EncryptionKey: testEncryptionKey}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})

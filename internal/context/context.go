@@ -6,11 +6,11 @@ type contextKey string
 
 const userKey contextKey = "user"
 
-// User holds the authenticated user info from the session.
+// User holds the authenticated user info. UserName comes from the session.
+// APIToken is set by TokenRefresh when a handler needs 3rd party access.
 type User struct {
 	UserName string
 	APIToken string
-	Password string
 }
 
 // WithUser returns a context with the user attached.

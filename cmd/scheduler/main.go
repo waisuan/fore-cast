@@ -95,7 +95,16 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		logger.Warn("failed to set running status", logger.String("user", p.UserName), logger.Err(err))
 	}
 
-	password, err := crypto.Decrypt(p.PasswordEnc, d.Config.EncryptionKey)
+	cred, err := d.Credentials.Get(p.UserName)
+	if err != nil {
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "credentials: "+err.Error())
+		return fmt.Errorf("credentials: %w", err)
+	}
+	if cred == nil {
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "credentials not found")
+		return fmt.Errorf("credentials not found for %s", p.UserName)
+	}
+	password, err := crypto.Decrypt(cred.PasswordEnc, d.Config.EncryptionKey)
 	if err != nil {
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "decrypt password: "+err.Error())
 		return fmt.Errorf("decrypt password: %w", err)

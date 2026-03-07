@@ -56,6 +56,12 @@ Run status (`running`, `success`, `failed`) is written back to the preset row so
 
 **Local testing**: run `make scheduler` to execute against the real Booker API (requires enabled presets in the web UI). Use `make scheduler-dry` to mock the API—override with `make scheduler-dry SCENARIO=success` or `SCENARIO=empty`. No real HTTP calls are made in dry-run.
 
+## Admin registration
+
+Admins can register new users at `/admin/register`. Set `ADMIN_USER` and `ADMIN_PASSWORD` to enable. The page requires these credentials (HTTP Basic Auth). Registration validates the new user's 3rd party credentials and creates a row in `user_credentials` only. The user can then log in and configure their preset in Settings.
+
+**Login** uses stored credentials only (no 3rd party call). **Slots, bookings, and booking** obtain a 3rd party token on-demand when the user accesses those features.
+
 ## Cleanup service
 
 A separate cron job that prunes booking history older than 30 days.
@@ -84,6 +90,8 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
 | `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |
 | `BOOKER_DRY_RUN_TIMEOUT` | *(none)* | Cap preset timeout when dry-run (e.g. `30s`) |
+| `ADMIN_USER` | *(none)* | Admin username for `/admin/register` (Basic Auth) |
+| `ADMIN_PASSWORD` | *(none)* | Admin password for `/admin/register` (Basic Auth) |
 
 ## Database migrations
 

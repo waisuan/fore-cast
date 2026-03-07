@@ -5,6 +5,7 @@ import (
 	"io/fs"
 
 	"github.com/waisuan/alfred/internal/booker"
+	"github.com/waisuan/alfred/internal/credentials"
 	"github.com/waisuan/alfred/internal/history"
 	"github.com/waisuan/alfred/internal/logger"
 	"github.com/waisuan/alfred/internal/notify"
@@ -14,13 +15,14 @@ import (
 
 // Dependencies is the top-level container for shared application resources.
 type Dependencies struct {
-	Config  *Config
-	PG      *sql.DB
-	Preset  preset.Service
-	History history.Service
-	Booker  booker.ClientInterface
-	Notify  notify.Service
-	Store   *session.Store
+	Config      *Config
+	PG          *sql.DB
+	Preset      preset.Service
+	Credentials credentials.Service
+	History     history.Service
+	Booker      booker.ClientInterface
+	Notify      notify.Service
+	Store       *session.Store
 }
 
 // Initialise loads configuration, opens a Postgres connection (with
@@ -48,13 +50,14 @@ func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 	}
 
 	return &Dependencies{
-		Config:  cfg,
-		PG:      pg,
-		Preset:  preset.NewService(pg),
-		History: history.NewService(pg),
-		Booker:  bookerClient,
-		Notify:  notify.NewService(cfg.NtfyBaseURL, cfg.NotifyHTTPTimeout),
-		Store:   session.NewStore(cfg.SessionTTL),
+		Config:      cfg,
+		PG:          pg,
+		Preset:      preset.NewService(pg),
+		Credentials: credentials.NewService(pg),
+		History:     history.NewService(pg),
+		Booker:      bookerClient,
+		Notify:      notify.NewService(cfg.NtfyBaseURL, cfg.NotifyHTTPTimeout),
+		Store:       session.NewStore(cfg.SessionTTL),
 	}, nil
 }
 

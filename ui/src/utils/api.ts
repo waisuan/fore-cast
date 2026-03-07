@@ -39,7 +39,7 @@ async function request<T>(
     body = text;
   }
   if (!res.ok) {
-    if (res.status === 401 && onUnauthorized) {
+    if (res.status === 401 && onUnauthorized && !endpoint.includes('/admin/')) {
       onUnauthorized();
     }
     const msg =
@@ -62,6 +62,12 @@ export const api = {
     request<T>(path, {
       method: 'POST',
       body: body != null ? JSON.stringify(body) : undefined,
+    }),
+  postWithHeaders: <T>(path: string, body: unknown, headers: Record<string, string>) =>
+    request<T>(path, {
+      method: 'POST',
+      body: body != null ? JSON.stringify(body) : undefined,
+      headers,
     }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {

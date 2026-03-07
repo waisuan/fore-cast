@@ -1,13 +1,20 @@
 'use client';
 
 import { ReactNode } from 'react';
+import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 import Header from './Header';
 import LoginPage from './LoginPage';
 import Spinner from './Spinner';
 
 export default function AppContent({ children }: { children: ReactNode }) {
+  const pathname = usePathname();
   const { isAuthenticated, isLoading } = useAuth();
+  const isAdminRoute = pathname?.startsWith('/admin');
+
+  if (isAdminRoute) {
+    return <>{children}</>;
+  }
 
   if (isLoading) {
     return (
