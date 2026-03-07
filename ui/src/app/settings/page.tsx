@@ -85,7 +85,7 @@ export default function SettingsPage() {
     load();
   }, [load]);
 
-  const MIN_RETRY_MS = 500;
+  const MIN_RETRY_MS = 100;
 
   function parseDurationMs(s: string): number | null {
     const match = s.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/i);
@@ -122,10 +122,10 @@ export default function SettingsPage() {
       let retryInterval = retryIntervalVal.trim();
       const retryMs = parseDurationMs(retryInterval);
       if (retryMs !== null && retryMs < MIN_RETRY_MS) {
-        retryInterval = '500ms';
-        addToast('Retry interval must be at least 500ms, adjusted to 500ms', 'info');
+        retryInterval = '100ms';
+        addToast('Retry interval must be at least 100ms, adjusted to 100ms', 'info');
       } else if (retryMs === null && retryInterval !== '') {
-        addToast('Invalid retry interval format (e.g. 1s, 500ms)', 'error');
+        addToast('Invalid retry interval format (e.g. 1s, 100ms)', 'error');
         setSaving(false);
         return;
       }
@@ -211,7 +211,7 @@ export default function SettingsPage() {
             Retry interval
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Pause between booking attempts (e.g. 1s, 500ms). Min: {defaults?.min_retry_interval ?? '500ms'}. Default: {defaults?.retry_interval}
+            Pause between booking attempts (e.g. 1s, 100ms). Min: {defaults?.min_retry_interval ?? '100ms'}. Default: {defaults?.retry_interval}
           </p>
           <input
             id="retryInterval"

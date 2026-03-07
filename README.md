@@ -11,7 +11,7 @@ Built and deployed on [Railway](https://railway.app).
 3. Filters slots before the cutoff time (default: 8:15 AM).
 4. Checks each slot's availability, then attempts to book the earliest one.
 
-Course is selected automatically based on the day of the week (override with `-course`).
+Course is selected automatically based on the day of the week (configurable per preset in the web UI).
 
 ## Prerequisites
 
@@ -40,41 +40,11 @@ make ui
 ## Build
 
 ```bash
-make build            # builds CLI to bin/fore-cast
 make build-web        # builds web server to bin/fore-cast-web
 make build-scheduler  # builds scheduler to bin/fore-cast-scheduler
 make build-cleanup    # builds cleanup to bin/fore-cast-cleanup
 make build-all        # builds everything
 ```
-
-## CLI usage (debug tool)
-
-Credentials are passed via `-user` and `-password`. No database required.
-
-```bash
-# Book the earliest available slot (1 week ahead, before 8:15 AM)
-./bin/fore-cast -user <member-id> -password <password>
-
-# Check current bookings
-./bin/fore-cast -user <member-id> -password <password> -status
-
-# List available slots for a date
-./bin/fore-cast -user <member-id> -password <password> -slots -date 2026/03/04
-
-# Retry until booked (useful for competitive booking windows)
-./bin/fore-cast -user <member-id> -password <password> -retry -timeout 10m
-
-# Custom retry interval (e.g. 500ms, 1s)
-./bin/fore-cast -user <member-id> -password <password> -retry -retry-interval 500ms
-
-# Delay execution until a specific time (e.g. wait for booking window to open)
-./bin/fore-cast -user <member-id> -password <password> -retry -at 22:00
-
-# Enable push notifications via ntfy.sh
-./bin/fore-cast -user <member-id> -password <password> -retry -ntfy <topic-name>
-```
-
-Run `./bin/fore-cast -help` for the full list of flags and options.
 
 ## Scheduler (production)
 
@@ -84,7 +54,7 @@ Presets are processed concurrently, capped at `MAX_CONCURRENT_PRESETS` (default 
 
 Run status (`running`, `success`, `failed`) is written back to the preset row so the web UI can display progress. Push notification topics are auto-generated per user when enabled via the settings page.
 
-**Dry-run mode** (local testing only): run `make scheduler-dry` to mock the Booker API. Override with `make scheduler-dry SCENARIO=success` or `SCENARIO=empty`. No real HTTP calls are made.
+**Local testing**: run `make scheduler` to execute against the real Booker API (requires enabled presets in the web UI). Use `make scheduler-dry` to mock the API—override with `make scheduler-dry SCENARIO=success` or `SCENARIO=empty`. No real HTTP calls are made in dry-run.
 
 ## Cleanup service
 
@@ -109,6 +79,7 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `DATABASE_URL` | *(required)* | Postgres connection string |
 | `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
 | `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
+| `MAX_PARALLEL_SLOTS` | `5` | Max slots to try in parallel per preset (each worker retries until it gets a slot or a neighbour wins) |
 | `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
 | `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |
 | `BOOKER_DRY_RUN_TIMEOUT` | *(none)* | Cap preset timeout when dry-run (e.g. `30s`) |

@@ -2,6 +2,7 @@ package preset
 
 import (
 	"database/sql"
+	"errors"
 	"time"
 )
 
@@ -9,11 +10,11 @@ const (
 	DefaultCutoff        = "8:15"
 	DefaultRetryInterval = "1s"
 	DefaultTimeout       = "10m"
-	MinRetryInterval     = "500ms"
+	MinRetryInterval     = "100ms"
 )
 
-// MinRetryIntervalDuration is the minimum allowed retry interval (500ms).
-const MinRetryIntervalDuration time.Duration = 500 * time.Millisecond
+// MinRetryIntervalDuration is the minimum allowed retry interval (100ms).
+const MinRetryIntervalDuration time.Duration = 100 * time.Millisecond
 
 // Service defines operations on booking presets.
 //
@@ -77,7 +78,7 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 		WHERE user_name = $1`, userName).
 		Scan(&p.ID, &p.UserName, &p.PasswordEnc, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt)
-	if err == sql.ErrNoRows {
+	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
 	if err != nil {

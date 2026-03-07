@@ -166,6 +166,38 @@ func (s *ServiceSuite) TestPruneAttempts() {
 	s.Assert().Equal("booked again", remaining[0].Message)
 }
 
+func (s *ServiceSuite) TestPruneAttempts_ShortRetention_UsesHours() {
+	// Retention < 24h uses "1 hour" interval (0 days fallback)
+	err := s.svc.LogAttempt(history.Attempt{
+		UserName: "alice",
+		CourseID: "PLC",
+		TxnDate:  "2026/03/04",
+		Status:   "success",
+		Message:  "old",
+	})
+	s.Require().NoError(err)
+	_, err = s.conn.Exec("UPDATE booking_attempts SET created_at = NOW() - INTERVAL '2 hours'")
+	s.Require().NoError(err)
+
+	err = s.svc.LogAttempt(history.Attempt{
+		UserName: "alice",
+		CourseID: "PLC",
+		TxnDate:  "2026/03/04",
+		Status:   "success",
+		Message:  "recent",
+	})
+	s.Require().NoError(err)
+
+	deleted, err := s.svc.PruneAttempts(1 * time.Hour)
+	s.Require().NoError(err)
+	s.Assert().Equal(int64(1), deleted)
+
+	remaining, err := s.svc.GetAttempts("alice", 10)
+	s.Require().NoError(err)
+	s.Assert().Len(remaining, 1)
+	s.Assert().Equal("recent", remaining[0].Message)
+}
+
 func TestServiceSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(ServiceSuite))

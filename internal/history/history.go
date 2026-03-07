@@ -2,6 +2,7 @@ package history
 
 import (
 	"database/sql"
+	"fmt"
 	"time"
 )
 
@@ -46,7 +47,12 @@ func (s *service) LogAttempt(a Attempt) error {
 }
 
 func (s *service) PruneAttempts(retention time.Duration) (int64, error) {
-	res, err := s.conn.Exec(`DELETE FROM booking_attempts WHERE created_at < NOW() - $1::interval`, retention.String())
+	// Use explicit PostgreSQL interval format (e.g. "30 days") instead of Go duration string.
+	interval := fmt.Sprintf("%d days", int(retention.Hours()/24))
+	if interval == "0 days" {
+		interval = "1 hour" // minimum to avoid empty/zero interval
+	}
+	res, err := s.conn.Exec(`DELETE FROM booking_attempts WHERE created_at < NOW() - $1::interval`, interval)
 	if err != nil {
 		return 0, err
 	}

@@ -2,21 +2,15 @@
 -include .env.development
 
 # Build binaries into bin/
-BINARY := bin/fore-cast
 WEB_BINARY := bin/fore-cast-web
 SCHEDULER_BINARY := bin/fore-cast-scheduler
 CLEANUP_BINARY := bin/fore-cast-cleanup
-CMD := ./cmd/cli
 CMD_WEB := ./cmd/web
 CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
 MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build build-web build-scheduler build-cleanup build-all cli web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down ui ui-install ui-build ui-lint
-build:
-	@mkdir -p bin
-	go build -o $(BINARY) $(CMD)
-
+.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down ui ui-install ui-build ui-lint
 build-web:
 	@mkdir -p bin
 	go build -o $(WEB_BINARY) $(CMD_WEB)
@@ -29,11 +23,7 @@ build-cleanup:
 	@mkdir -p bin
 	go build -o $(CLEANUP_BINARY) $(CMD_CLEANUP)
 
-build-all: build build-web build-scheduler build-cleanup
-
-# Run the CLI
-cli:
-	go run $(CMD)
+build-all: build-web build-scheduler build-cleanup
 
 # Run the web server (loads .env.development via APP_ENV)
 web:
