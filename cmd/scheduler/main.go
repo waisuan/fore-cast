@@ -102,7 +102,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 
 	token, err := d.Booker.Login(p.UserName, password)
-	txnDate := slotutil.DateOneWeekAhead()
+	txnDate := txnDateFromConfig(d.Config)
 	if err != nil {
 		logAttempt(d.History, p, txnDate, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
 		notifyUser(d.Notify, p, "FAILED: login: "+err.Error())
@@ -169,6 +169,18 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 	updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), result.Message)
 	return nil
+}
+
+func txnDateFromConfig(cfg *deps.Config) string {
+	if cfg.SchedulerTxnDate != "" {
+		if err := slotutil.ValidateDate(cfg.SchedulerTxnDate); err == nil {
+			return cfg.SchedulerTxnDate
+		}
+		logger.Warn("invalid SCHEDULER_TXN_DATE, using 1 week ahead",
+			logger.String("value", cfg.SchedulerTxnDate),
+			logger.String("expected", "YYYY/MM/DD"))
+	}
+	return slotutil.DateOneWeekAhead()
 }
 
 func logAttempt(svc history.Service, p preset.Preset, txnDate string, result runner.Result) {

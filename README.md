@@ -80,6 +80,7 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
 | `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
 | `MAX_PARALLEL_SLOTS` | `5` | Max slots to try in parallel per preset (each worker retries until it gets a slot or a neighbour wins) |
+| `SCHEDULER_TXN_DATE` | *(none)* | Override target date (YYYY/MM/DD); empty = 1 week ahead. Useful for testing. |
 | `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
 | `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |
 | `BOOKER_DRY_RUN_TIMEOUT` | *(none)* | Cap preset timeout when dry-run (e.g. `30s`) |
