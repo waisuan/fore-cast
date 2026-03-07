@@ -27,7 +27,7 @@ type PresetHandlerSuite struct {
 func (s *PresetHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockSvc = preset.NewMockService(s.ctrl)
-	s.handler = &PresetHandler{Service: s.mockSvc}
+	s.handler = &PresetHandler{Service: s.mockSvc, MaxParallelSlotsMax: 20}
 	s.user = &context.User{UserName: "u", APIToken: "token"}
 }
 
@@ -69,24 +69,27 @@ func (s *PresetHandlerSuite) TestGetPreset_NotFound_ReturnsDefaults() {
 	s.Assert().Equal(preset.DefaultCutoff, resp.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.RetryInterval)
 	s.Assert().Equal(preset.DefaultTimeout, resp.Timeout)
+	s.Assert().Equal(preset.DefaultMaxParallelSlots, resp.MaxParallelSlots)
 
 	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)
 	s.Assert().Equal(preset.DefaultTimeout, resp.Defaults.Timeout)
+	s.Assert().Equal(preset.DefaultMaxParallelSlots, resp.Defaults.MaxParallelSlots)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.mockSvc.EXPECT().
 		GetPreset("u").
 		Return(&preset.Preset{
-			UserName:      "u",
-			Course:        sql.NullString{String: "PLC", Valid: true},
-			Cutoff:        "7:30",
-			RetryInterval: "2s",
-			Timeout:       "5m",
-			NtfyTopic:     sql.NullString{String: "my-topic", Valid: true},
-			Enabled:       true,
-			UpdatedAt:     time.Now(),
+			UserName:         "u",
+			Course:           sql.NullString{String: "PLC", Valid: true},
+			Cutoff:           "7:30",
+			RetryInterval:    "2s",
+			Timeout:          "5m",
+			MaxParallelSlots: 3,
+			NtfyTopic:        sql.NullString{String: "my-topic", Valid: true},
+			Enabled:          true,
+			UpdatedAt:        time.Now(),
 		}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
@@ -102,6 +105,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal("7:30", resp.Cutoff)
 	s.Assert().Equal("2s", resp.RetryInterval)
 	s.Assert().Equal("5m", resp.Timeout)
+	s.Assert().Equal(3, resp.MaxParallelSlots)
 	s.Assert().Equal("my-topic", resp.NtfyTopic)
 	s.Assert().True(resp.EnableNotifications)
 	s.Assert().True(resp.Enabled)
@@ -109,6 +113,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)
 	s.Assert().Equal(preset.DefaultTimeout, resp.Defaults.Timeout)
+	s.Assert().Equal(preset.DefaultMaxParallelSlots, resp.Defaults.MaxParallelSlots)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_Found_NoTopic() {
@@ -182,16 +187,19 @@ func (s *PresetHandlerSuite) TestSavePreset_Success() {
 			s.Assert().Equal("7:30", p.Cutoff)
 			s.Assert().Equal("2s", p.RetryInterval)
 			s.Assert().Equal("5m", p.Timeout)
+			s.Assert().Equal(3, p.MaxParallelSlots)
 			s.Assert().True(p.Enabled)
 			return nil
 		})
 
+	maxParallel := 3
 	body, _ := json.Marshal(PresetRequest{
-		Course:        "PLC",
-		Cutoff:        "7:30",
-		RetryInterval: "2s",
-		Timeout:       "5m",
-		Enabled:       true,
+		Course:           "PLC",
+		Cutoff:           "7:30",
+		RetryInterval:    "2s",
+		Timeout:          "5m",
+		MaxParallelSlots: &maxParallel,
+		Enabled:          true,
 	})
 	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
 	req.Header.Set("Content-Type", "application/json")
@@ -232,6 +240,7 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 			s.Assert().Equal("8:15", p.Cutoff)
 			s.Assert().Equal("1s", p.RetryInterval)
 			s.Assert().Equal("10m", p.Timeout)
+			s.Assert().Equal(preset.DefaultMaxParallelSlots, p.MaxParallelSlots)
 			return nil
 		})
 
@@ -337,6 +346,47 @@ func (s *PresetHandlerSuite) TestSavePreset_EnableNotifications_PreservesExistin
 	s.handler.SavePreset(rec, req)
 
 	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_MaxParallelSlotsBelowMin_Returns400() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	zero := 0
+	body, _ := json.Marshal(PresetRequest{
+		MaxParallelSlots: &zero,
+		Cutoff:           "8:15",
+		Timeout:          "10m",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+	var resp map[string]string
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Contains(resp["message"], "at least 1")
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_MaxParallelSlotsAboveMax_Returns400() {
+	s.handler.MaxParallelSlotsMax = 10
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	eleven := 11
+	body, _ := json.Marshal(PresetRequest{
+		MaxParallelSlots: &eleven,
+		Cutoff:           "8:15",
+		Timeout:          "10m",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+	var resp map[string]string
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Contains(resp["message"], "at most 10")
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {

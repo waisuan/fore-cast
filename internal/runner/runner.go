@@ -45,17 +45,11 @@ type Result struct {
 	BookingID string
 }
 
-const defaultMaxParallelSlots = 5
-
 // Run executes the booking loop: fetch slots, filter by cutoff, attempt to book.
 // When Retry is true, each parallel worker continually retries until it gets a slot
 // or another worker succeeds. When Retry is false, each worker tries once.
 func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 	maxParallel := cfg.MaxParallelSlots
-	if maxParallel <= 0 {
-		maxParallel = defaultMaxParallelSlots
-	}
-
 	slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
 	if err != nil {
 		if errors.Is(err, booker.ErrInvalidToken) {

@@ -4,6 +4,7 @@ import (
 	"database/sql"
 	"encoding/json"
 	"net/http"
+	"strconv"
 	"time"
 
 	"github.com/waisuan/alfred/internal/context"
@@ -13,7 +14,8 @@ import (
 
 // PresetHandler handles /api/v1/preset endpoints.
 type PresetHandler struct {
-	Service preset.Service
+	Service             preset.Service
+	MaxParallelSlotsMax int
 }
 
 // PresetDefaults contains the server-side default values for preset fields.
@@ -23,6 +25,7 @@ type PresetDefaults struct {
 	RetryInterval    string `json:"retry_interval"`
 	MinRetryInterval string `json:"min_retry_interval"`
 	Timeout          string `json:"timeout"`
+	MaxParallelSlots int    `json:"max_parallel_slots"`
 }
 
 // PresetResponse is the JSON response for GET /api/v1/preset.
@@ -32,6 +35,7 @@ type PresetResponse struct {
 	Cutoff              string         `json:"cutoff"`
 	RetryInterval       string         `json:"retry_interval"`
 	Timeout             string         `json:"timeout"`
+	MaxParallelSlots    int            `json:"max_parallel_slots"`
 	NtfyTopic           string         `json:"ntfy_topic"`
 	EnableNotifications bool           `json:"enable_notifications"`
 	Enabled             bool           `json:"enabled"`
@@ -47,6 +51,7 @@ type PresetRequest struct {
 	Cutoff              string `json:"cutoff"`
 	RetryInterval       string `json:"retry_interval"`
 	Timeout             string `json:"timeout"`
+	MaxParallelSlots    *int   `json:"max_parallel_slots"`
 	EnableNotifications *bool  `json:"enable_notifications"`
 	Enabled             bool   `json:"enabled"`
 }
@@ -68,6 +73,7 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		RetryInterval:    preset.DefaultRetryInterval,
 		MinRetryInterval: preset.MinRetryInterval,
 		Timeout:          preset.DefaultTimeout,
+		MaxParallelSlots: preset.DefaultMaxParallelSlots,
 	}
 
 	existing, err := h.Service.GetPreset(u.UserName)
@@ -82,12 +88,14 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		resp.Cutoff = preset.DefaultCutoff
 		resp.RetryInterval = preset.DefaultRetryInterval
 		resp.Timeout = preset.DefaultTimeout
+		resp.MaxParallelSlots = preset.DefaultMaxParallelSlots
 	} else {
 		resp.UserName = existing.UserName
 		resp.Course = existing.Course.String
 		resp.Cutoff = existing.Cutoff
 		resp.RetryInterval = existing.RetryInterval
 		resp.Timeout = existing.Timeout
+		resp.MaxParallelSlots = existing.MaxParallelSlots
 		resp.NtfyTopic = existing.NtfyTopic.String
 		resp.EnableNotifications = existing.NtfyTopic.Valid && existing.NtfyTopic.String != ""
 		resp.Enabled = existing.Enabled
@@ -129,14 +137,37 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	ntfyTopic := resolveNtfyTopic(existing, u.UserName, req.EnableNotifications)
 
+	var maxParallel int
+	if req.MaxParallelSlots != nil {
+		v := *req.MaxParallelSlots
+		if v < 1 {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "max_parallel_slots must be at least 1"})
+			return
+		}
+		if h.MaxParallelSlotsMax >= 1 && v > h.MaxParallelSlotsMax {
+			w.Header().Set("Content-Type", "application/json")
+			w.WriteHeader(http.StatusBadRequest)
+			_ = json.NewEncoder(w).Encode(map[string]string{"message": "max_parallel_slots must be at most " + strconv.Itoa(h.MaxParallelSlotsMax)})
+			return
+		}
+		maxParallel = v
+	} else if existing != nil {
+		maxParallel = existing.MaxParallelSlots
+	} else {
+		maxParallel = preset.DefaultMaxParallelSlots
+	}
+
 	p := preset.Preset{
-		UserName:      u.UserName,
-		Course:        sql.NullString{String: req.Course, Valid: req.Course != ""},
-		Cutoff:        req.Cutoff,
-		RetryInterval: req.RetryInterval,
-		Timeout:       req.Timeout,
-		NtfyTopic:     ntfyTopic,
-		Enabled:       req.Enabled,
+		UserName:         u.UserName,
+		Course:           sql.NullString{String: req.Course, Valid: req.Course != ""},
+		Cutoff:           req.Cutoff,
+		RetryInterval:    req.RetryInterval,
+		Timeout:          req.Timeout,
+		MaxParallelSlots: maxParallel,
+		NtfyTopic:        ntfyTopic,
+		Enabled:          req.Enabled,
 	}
 	if p.Cutoff == "" {
 		p.Cutoff = preset.DefaultCutoff

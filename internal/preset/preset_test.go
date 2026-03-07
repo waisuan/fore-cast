@@ -71,13 +71,14 @@ func (s *ServiceSuite) TestUpsertPreset_Insert_And_GetPreset() {
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
-		UserName:      "alice",
-		Course:        sql.NullString{String: "PLC", Valid: true},
-		Cutoff:        "8:15",
-		RetryInterval: "5s",
-		Timeout:       "10m",
-		NtfyTopic:     sql.NullString{String: "my-topic", Valid: true},
-		Enabled:       true,
+		UserName:         "alice",
+		Course:           sql.NullString{String: "PLC", Valid: true},
+		Cutoff:           "8:15",
+		RetryInterval:    "5s",
+		Timeout:          "10m",
+		MaxParallelSlots: 5,
+		NtfyTopic:        sql.NullString{String: "my-topic", Valid: true},
+		Enabled:          true,
 	})
 	s.Require().NoError(err)
 
@@ -100,21 +101,23 @@ func (s *ServiceSuite) TestUpsertPreset_Update() {
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
-		UserName:      "alice",
-		Cutoff:        "8:15",
-		RetryInterval: "5s",
-		Timeout:       "10m",
-		Enabled:       false,
+		UserName:         "alice",
+		Cutoff:           "8:15",
+		RetryInterval:    "5s",
+		Timeout:          "10m",
+		MaxParallelSlots: 5,
+		Enabled:          false,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
-		UserName:      "alice",
-		Course:        sql.NullString{String: "BRC", Valid: true},
-		Cutoff:        "7:30",
-		RetryInterval: "3s",
-		Timeout:       "5m",
-		Enabled:       true,
+		UserName:         "alice",
+		Course:           sql.NullString{String: "BRC", Valid: true},
+		Cutoff:           "7:30",
+		RetryInterval:    "3s",
+		Timeout:          "5m",
+		MaxParallelSlots: 3,
+		Enabled:          true,
 	})
 	s.Require().NoError(err)
 
@@ -140,19 +143,19 @@ func (s *ServiceSuite) TestGetEnabledPresets() {
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName: "alice", Cutoff: "8:15",
-		RetryInterval: "5s", Timeout: "10m", Enabled: true,
+		RetryInterval: "5s", Timeout: "10m", MaxParallelSlots: 5, Enabled: true,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName: "bob", Cutoff: "7:30",
-		RetryInterval: "3s", Timeout: "5m", Enabled: false,
+		RetryInterval: "3s", Timeout: "5m", MaxParallelSlots: 5, Enabled: false,
 	})
 	s.Require().NoError(err)
 
 	err = s.svc.UpsertPreset(preset.Preset{
 		UserName: "carol", Cutoff: "8:00",
-		RetryInterval: "5s", Timeout: "10m", Enabled: true,
+		RetryInterval: "5s", Timeout: "10m", MaxParallelSlots: 5, Enabled: true,
 	})
 	s.Require().NoError(err)
 
@@ -199,7 +202,7 @@ func TestUpdatePresetRunStatus(t *testing.T) {
 
 	err = svc.UpsertPreset(preset.Preset{
 		UserName: "alice", Cutoff: "8:15",
-		RetryInterval: "1s", Timeout: "10m", Enabled: true,
+		RetryInterval: "1s", Timeout: "10m", MaxParallelSlots: 5, Enabled: true,
 	})
 	require.NoError(t, err)
 

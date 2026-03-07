@@ -31,6 +31,7 @@ interface PresetDefaults {
   retry_interval: string;
   min_retry_interval: string;
   timeout: string;
+  max_parallel_slots: number;
 }
 
 interface PresetData {
@@ -39,6 +40,7 @@ interface PresetData {
   cutoff: string;
   retry_interval: string;
   timeout: string;
+  max_parallel_slots: number;
   ntfy_topic: string;
   enable_notifications: boolean;
   enabled: boolean;
@@ -57,6 +59,7 @@ export default function SettingsPage() {
   const [cutoff, setCutoff] = useState('');
   const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
+  const [maxParallelSlots, setMaxParallelSlots] = useState(5);
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -71,6 +74,7 @@ export default function SettingsPage() {
       setCutoff(res.cutoff ?? '');
       setRetryIntervalVal(res.retry_interval ?? res.defaults?.retry_interval ?? '1s');
       setTimeoutVal(res.timeout ?? '');
+      setMaxParallelSlots(res.max_parallel_slots ?? res.defaults?.max_parallel_slots ?? 5);
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
@@ -135,11 +139,18 @@ export default function SettingsPage() {
         setSaving(false);
         return;
       }
+      const maxParallel = Math.round(maxParallelSlots) || 5;
+      if (maxParallel < 1) {
+        addToast('Max parallel slots must be at least 1', 'error');
+        setSaving(false);
+        return;
+      }
       await api.put(API_ENDPOINTS.preset, {
         course,
         cutoff,
         retry_interval: retryInterval || undefined,
         timeout: timeoutVal,
+        max_parallel_slots: maxParallel,
         enable_notifications: enableNotifications,
         enabled,
       });
@@ -235,6 +246,22 @@ export default function SettingsPage() {
             value={timeoutVal}
             onChange={(e) => setTimeoutVal(e.target.value)}
             placeholder={defaults?.timeout}
+            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          />
+        </div>
+        <div>
+          <label htmlFor="maxParallelSlots" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+            Max parallel slots
+          </label>
+          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+            Number of slots to try in parallel when booking. Default: {defaults?.max_parallel_slots ?? 5}
+          </p>
+          <input
+            id="maxParallelSlots"
+            type="number"
+            min={1}
+            value={maxParallelSlots}
+            onChange={(e) => setMaxParallelSlots(parseInt(e.target.value, 10) || 5)}
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
         </div>

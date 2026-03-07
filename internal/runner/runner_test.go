@@ -13,15 +13,16 @@ import (
 
 func baseCfg(token string) Config {
 	return Config{
-		UserName:      "user",
-		Token:         token,
-		TxnDate:       "2026/03/04",
-		CourseID:      "PLC",
-		CutoffTeeTime: "1899-12-30T08:15:00",
-		RetryInterval: time.Second,
-		Retry:         false,
-		Debug:         false,
-		Timeout:       10 * time.Second,
+		UserName:         "user",
+		Token:            token,
+		TxnDate:          "2026/03/04",
+		CourseID:         "PLC",
+		CutoffTeeTime:    "1899-12-30T08:15:00",
+		RetryInterval:    time.Second,
+		Retry:            false,
+		Debug:            false,
+		Timeout:          10 * time.Second,
+		MaxParallelSlots: 5,
 	}
 }
 
