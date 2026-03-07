@@ -131,16 +131,6 @@ export default function SlotsPage() {
           >
             {loading ? <Spinner className="h-4 w-4 text-white" /> : 'Load slots'}
           </button>
-          {data && (
-            <button
-              type="button"
-              onClick={loadSlots}
-              disabled={loading}
-              className="rounded border border-gray-300 px-3 py-2 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-            >
-              Refresh
-            </button>
-          )}
         </div>
       )}
       {!schedulerRunning && data && (
