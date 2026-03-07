@@ -56,20 +56,9 @@ export default function HistoryPage() {
 
   return (
     <div className="space-y-6">
-      <div className="flex items-center justify-between">
-        <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
-          Booking history
-        </h1>
-        <button
-          type="button"
-          onClick={load}
-          disabled={loading}
-          aria-busy={loading}
-          className="rounded border border-gray-300 px-3 py-1.5 text-sm text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:text-gray-300 dark:hover:bg-gray-700"
-        >
-          Refresh
-        </button>
-      </div>
+      <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
+        Booking history
+      </h1>
       {loading && (
         <div className="flex justify-center py-8">
           <Spinner className="h-6 w-6" />
