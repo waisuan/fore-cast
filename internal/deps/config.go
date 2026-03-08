@@ -41,7 +41,7 @@ type Config struct {
 
 	// Booker HTTP transport connection pool (Go's default MaxIdleConnsPerHost is 2; higher values reuse more)
 	BookerMaxIdleConns        int           `env:"BOOKER_MAX_IDLE_CONNS" envDefault:"100"`
-	BookerMaxIdleConnsPerHost int           `env:"BOOKER_MAX_IDLE_CONNS_PER_HOST" envDefault:"20"`
+	BookerMaxIdleConnsPerHost int           `env:"BOOKER_MAX_IDLE_CONNS_PER_HOST" envDefault:"30"`
 	BookerIdleConnTimeout     time.Duration `env:"BOOKER_IDLE_CONN_TIMEOUT" envDefault:"90s"`
 
 	// Scheduler
