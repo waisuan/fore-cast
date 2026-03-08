@@ -39,6 +39,11 @@ type Config struct {
 	NotifyHTTPTimeout time.Duration `env:"NOTIFY_HTTP_TIMEOUT" envDefault:"10s"`
 	NtfyBaseURL       string        `env:"NTFY_BASE_URL" envDefault:"https://ntfy.sh"`
 
+	// Booker HTTP transport connection pool (Go's default MaxIdleConnsPerHost is 2; higher values reuse more)
+	BookerMaxIdleConns        int           `env:"BOOKER_MAX_IDLE_CONNS" envDefault:"100"`
+	BookerMaxIdleConnsPerHost int           `env:"BOOKER_MAX_IDLE_CONNS_PER_HOST" envDefault:"20"`
+	BookerIdleConnTimeout     time.Duration `env:"BOOKER_IDLE_CONN_TIMEOUT" envDefault:"90s"`
+
 	// Scheduler
 	MaxConcurrentPresets int    `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
 	MaxParallelSlotsMax  int    `env:"MAX_PARALLEL_SLOTS_MAX" envDefault:"20"` // max allowed per preset (validated in API)

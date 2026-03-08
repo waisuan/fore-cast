@@ -5,9 +5,17 @@ import (
 	"net/http"
 	"net/http/httptest"
 	"testing"
+	"time"
 
 	"github.com/stretchr/testify/suite"
 )
+
+var testClientOpts = ClientOptions{
+	Timeout:             30 * time.Second,
+	MaxIdleConns:        100,
+	MaxIdleConnsPerHost: 20,
+	IdleConnTimeout:     90 * time.Second,
+}
 
 type ClientSuite struct {
 	suite.Suite
@@ -20,7 +28,7 @@ func (s *ClientSuite) TestLogin_Success() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	token, err := client.Login("user", "pass")
 	s.Require().NoError(err)
 	s.Assert().Equal("test-token-123", token)
@@ -33,7 +41,7 @@ func (s *ClientSuite) TestLogin_Rejected() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	_, err := client.Login("user", "wrong")
 	s.Require().Error(err)
 }
@@ -45,7 +53,7 @@ func (s *ClientSuite) TestLogin_EmptyToken() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	_, err := client.Login("user", "pass")
 	s.Require().Error(err)
 }
@@ -57,7 +65,7 @@ func (s *ClientSuite) TestLogin_HTMLResponse() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	_, err := client.Login("user", "pass")
 	s.Require().Error(err)
 }
@@ -69,7 +77,7 @@ func (s *ClientSuite) TestGetTeeTimeSlots_Success() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	slots, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
 	s.Require().NoError(err)
 	s.Require().Len(slots, 1)
@@ -85,7 +93,7 @@ func (s *ClientSuite) TestGetTeeTimeSlots_StatusFalse() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	_, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
 	s.Require().Error(err)
 }
@@ -97,7 +105,7 @@ func (s *ClientSuite) TestGetTeeTimeSlots_InvalidToken() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	_, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
 	s.Require().Error(err)
 	s.Assert().True(errors.Is(err, ErrInvalidToken))
@@ -110,7 +118,7 @@ func (s *ClientSuite) TestBookTeeTime_Success() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	input := GolfNewBooking2Input{
 		CourseID: "BRC", TxnDate: "2026/02/25", Session: "Morning", TeeBox: "1",
 		TeeTime: "1899-12-30T07:37:00", AccountID: "user", TotalGuest: 4, IPaddress: "user", Holes: 18,
@@ -130,7 +138,7 @@ func (s *ClientSuite) TestCheckTeeTimeStatus_Success() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	input := GolfCheckTeeTimeStatusInput{
 		CourseID: "BRC", TxnDate: "2026/02/25", Session: "Morning", TeeBox: "1",
 		TeeTime: "1899-12-30T07:37:00", UserName: "user", IPAddress: "user", Action: 0,
@@ -148,7 +156,7 @@ func (s *ClientSuite) TestGetBooking_Success() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	resp, err := client.GetBooking("token", "user", "", "")
 	s.Require().NoError(err)
 	s.Require().True(resp.Status)
@@ -163,7 +171,7 @@ func (s *ClientSuite) TestGetTeeTimeSlots_TeeBoxAsNumber() {
 	}))
 	defer srv.Close()
 
-	client := NewClientWithOptions(srv.URL, defaultHTTPTimeout)
+	client := NewClient(srv.URL, testClientOpts)
 	slots, err := client.GetTeeTimeSlots("token", "BRC", "2026/02/25")
 	s.Require().NoError(err)
 	s.Require().Len(slots, 1)

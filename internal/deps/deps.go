@@ -46,7 +46,12 @@ func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 	if cfg.BookerDryRun {
 		bookerClient = booker.NewDryRunClient(cfg.BookerDryRunScenario)
 	} else {
-		bookerClient = booker.NewClientWithOptions(booker.BaseURL, cfg.BookerHTTPTimeout)
+		bookerClient = booker.NewClient(booker.BaseURL, booker.ClientOptions{
+			Timeout:             cfg.BookerHTTPTimeout,
+			MaxIdleConns:        cfg.BookerMaxIdleConns,
+			MaxIdleConnsPerHost: cfg.BookerMaxIdleConnsPerHost,
+			IdleConnTimeout:     cfg.BookerIdleConnTimeout,
+		})
 	}
 
 	return &Dependencies{

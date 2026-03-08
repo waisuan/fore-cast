@@ -30,18 +30,27 @@ type Client struct {
 	httpClient *http.Client
 }
 
-const defaultHTTPTimeout = 30 * time.Second
-
-// NewClient returns a client with the default base URL and 30s timeout.
-func NewClient() *Client {
-	return NewClientWithOptions(BaseURL, defaultHTTPTimeout)
+// ClientOptions configures the HTTP client used for Booker API calls.
+type ClientOptions struct {
+	Timeout             time.Duration
+	MaxIdleConns        int
+	MaxIdleConnsPerHost int
+	IdleConnTimeout     time.Duration
 }
 
-// NewClientWithOptions returns a client with the given base URL and timeout.
-func NewClientWithOptions(baseURL string, timeout time.Duration) *Client {
+// NewClient returns a client with the given base URL and options.
+func NewClient(baseURL string, opts ClientOptions) *Client {
+	transport := &http.Transport{
+		MaxIdleConns:        opts.MaxIdleConns,
+		MaxIdleConnsPerHost: opts.MaxIdleConnsPerHost,
+		IdleConnTimeout:     opts.IdleConnTimeout,
+	}
 	return &Client{
-		baseURL:    baseURL,
-		httpClient: &http.Client{Timeout: timeout},
+		baseURL: baseURL,
+		httpClient: &http.Client{
+			Timeout:   opts.Timeout,
+			Transport: transport,
+		},
 	}
 }
 
