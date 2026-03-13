@@ -227,7 +227,11 @@ func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTime
 		return false, "", err
 	}
 	if !resp.Status || len(resp.Result) == 0 || !resp.Result[0].Status {
-		return false, "", nil
+		reason := resp.Reason
+		if reason == "" {
+			reason = "booking failed"
+		}
+		return false, "", fmt.Errorf("%s", reason)
 	}
 	return true, resp.Result[0].BookingID, nil
 }
