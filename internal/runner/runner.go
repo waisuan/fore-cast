@@ -254,8 +254,11 @@ func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booke
 	}
 	reason := resp.Reason
 	if reason == "" {
-		reason = "(empty)"
+		reason = "slot not available"
 	}
 	logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
+	if !resp.Status {
+		return fmt.Errorf("tee time status false: %s", reason)
+	}
 	return nil
 }

@@ -10,12 +10,12 @@ const (
 	DefaultCutoff           = "8:15"
 	DefaultRetryInterval    = "1s"
 	DefaultTimeout          = "10m"
-	MinRetryInterval        = "100ms"
+	MinRetryInterval        = "0s"
 	DefaultMaxParallelSlots = 5
 )
 
-// MinRetryIntervalDuration is the minimum allowed retry interval (100ms).
-const MinRetryIntervalDuration time.Duration = 100 * time.Millisecond
+// MinRetryIntervalDuration is the minimum allowed retry interval (0s).
+const MinRetryIntervalDuration time.Duration = 0
 
 // Service defines operations on booking presets.
 //

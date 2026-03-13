@@ -277,12 +277,12 @@ func (s *PresetHandlerSuite) TestSavePreset_InvalidRetryInterval_FallsBackToDefa
 	s.Assert().Equal(http.StatusOK, rec.Code)
 }
 
-func (s *PresetHandlerSuite) TestSavePreset_RetryIntervalBelowMin_ClampedTo100ms() {
+func (s *PresetHandlerSuite) TestSavePreset_RetryIntervalZeroOrLow_Accepted() {
 	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
 	s.mockSvc.EXPECT().
 		UpsertPreset(gomock.Any()).
 		DoAndReturn(func(p preset.Preset) error {
-			s.Assert().Equal(preset.MinRetryInterval, p.RetryInterval, "value below 100ms should be clamped")
+			s.Assert().Equal("50ms", p.RetryInterval, "50ms should be accepted as-is (min is 0s)")
 			return nil
 		})
 
