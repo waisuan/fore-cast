@@ -27,6 +27,7 @@ export default function SlotsPage() {
   const { addToast } = useToast();
   const [presetStatus, setPresetStatus] = useState<PresetStatus | null>(null);
   const [date, setDate] = useState('');
+  const [course, setCourse] = useState<string>('');
   const [data, setData] = useState<SlotsResponse | null>(null);
   const [loading, setLoading] = useState(false);
   const [bookingSlotKey, setBookingSlotKey] = useState<string | null>(null);
@@ -50,6 +51,7 @@ export default function SlotsPage() {
     setData(null);
     try {
       const params = new URLSearchParams({ date: toApiDate(date) });
+      if (course) params.set('course', course);
       const res = await api.get<SlotsResponse>(
         `${API_ENDPOINTS.slots}?${params.toString()}`,
       );
@@ -62,7 +64,7 @@ export default function SlotsPage() {
     } finally {
       setLoading(false);
     }
-  }, [date, addToast, presetStatus?.last_run_status]);
+  }, [date, course, addToast, presetStatus?.last_run_status]);
 
   useEffect(() => {
     loadPreset();
@@ -121,6 +123,21 @@ export default function SlotsPage() {
               min={todayIso()}
               className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-40"
             />
+          </div>
+          <div>
+            <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+              Course
+            </label>
+            <select
+              id="course"
+              value={course}
+              onChange={(e) => setCourse(e.target.value)}
+              className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-44"
+            >
+              <option value="">Auto (default for day)</option>
+              <option value="BRC">BRC</option>
+              <option value="PLC">PLC</option>
+            </select>
           </div>
           <button
             type="button"

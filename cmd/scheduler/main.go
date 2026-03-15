@@ -152,6 +152,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		retryInterval = preset.MinRetryIntervalDuration
 	}
 
+	refreshMu := &sync.Mutex{}
 	cfg := runner.Config{
 		UserName:         p.UserName,
 		Token:            token,
@@ -163,6 +164,11 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		Debug:            false,
 		Timeout:          timeout,
 		MaxParallelSlots: p.MaxParallelSlots,
+		StartupJitterMax: d.Config.RunnerStartupJitterMax,
+		RefreshToken: func() (string, error) {
+			return d.Booker.Login(p.UserName, password)
+		},
+		RefreshTokenMu: refreshMu,
 	}
 
 	logger.Info("starting run", logger.String("user", p.UserName), logger.String("course", courseID), logger.String("txn_date", txnDate))

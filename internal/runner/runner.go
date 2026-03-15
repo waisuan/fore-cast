@@ -4,6 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
+	"math/rand"
 	"sync"
 	"time"
 
@@ -33,6 +34,17 @@ type Config struct {
 	Debug            bool
 	Timeout          time.Duration
 	MaxParallelSlots int // max slots to try in parallel (default 5 when 0)
+
+	// RefreshToken, when set, is called when the API returns CODE103 (invalid token).
+	// The runner updates Config.Token with the new token and retries. RefreshTokenMu
+	// serializes refresh attempts across workers.
+
+	// StartupJitterMax is the max random delay before each worker starts (0 = disabled).
+	// Helps stagger workers to avoid thundering herd.
+	StartupJitterMax time.Duration
+
+	RefreshToken   func() (string, error)
+	RefreshTokenMu *sync.Mutex
 }
 
 // Result describes the outcome of a booking run.
@@ -96,7 +108,7 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 		target := slotsToTry[i]
 		go func(slot booker.TeeTimeSlot) {
 			defer wg.Done()
-			runWorker(ctx, client, cfg, slot, &once, outcomeCh, cancel)
+			runWorker(ctx, client, &cfg, slot, &once, outcomeCh, cancel)
 		}(target)
 	}
 
@@ -126,8 +138,18 @@ func slotTag(slot *booker.TeeTimeSlot) string {
 
 // runWorker runs the booking loop for one slot. When cfg.Retry is true, it continually
 // retries (check, book) until it succeeds or ctx is cancelled (neighbour won or timeout).
-func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, target booker.TeeTimeSlot,
+func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, target booker.TeeTimeSlot,
 	once *sync.Once, outcomeCh chan<- Result, cancel context.CancelFunc) {
+	// Stagger worker startup to avoid thundering herd
+	if cfg.StartupJitterMax > 0 {
+		jitter := time.Duration(rand.Int63n(int64(cfg.StartupJitterMax)))
+		select {
+		case <-ctx.Done():
+			return
+		case <-time.After(jitter):
+		}
+	}
+
 	slot := &target
 	tag := slotTag(slot)
 	timer := time.NewTimer(cfg.RetryInterval)
@@ -145,6 +167,14 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, t
 			logger.String("session", slot.Session),
 			logger.String("tee_box", slot.TeeBox.String()))
 		if err := checkTeeTimeStatus(client, cfg.Token, slot, tag, cfg.TxnDate, cfg.UserName); err != nil {
+			if errors.Is(err, booker.ErrInvalidToken) && cfg.RefreshToken != nil {
+				if _, refreshErr := refreshToken(cfg, cfg.Token); refreshErr != nil {
+					logger.Error(tag+" token refresh failed", logger.Err(refreshErr))
+				} else {
+					logger.Info(tag + " token refreshed, retrying")
+					continue
+				}
+			}
 			logger.Error(tag+" failed to check tee time status", logger.Err(err))
 			if !cfg.Retry {
 				return
@@ -166,6 +196,20 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, t
 
 		booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 		if bookErr != nil {
+			if errors.Is(bookErr, booker.ErrInvalidToken) && cfg.RefreshToken != nil {
+				if _, refreshErr := refreshToken(cfg, cfg.Token); refreshErr != nil {
+					logger.Error(tag+" token refresh failed", logger.Err(refreshErr))
+				} else {
+					logger.Info(tag + " token refreshed, retrying")
+					resetTimer(timer, cfg.RetryInterval)
+					select {
+					case <-ctx.Done():
+						return
+					case <-timer.C:
+					}
+					continue
+				}
+			}
 			logger.Error(tag+" failed to book slot", logger.Err(bookErr))
 		}
 		if booked {
@@ -199,6 +243,23 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg Config, t
 	}
 }
 
+func refreshToken(cfg *Config, oldToken string) (string, error) {
+	if cfg.RefreshTokenMu != nil {
+		cfg.RefreshTokenMu.Lock()
+		defer cfg.RefreshTokenMu.Unlock()
+	}
+	// Another worker may have refreshed while we waited for the lock
+	if cfg.Token != oldToken {
+		return cfg.Token, nil
+	}
+	newToken, err := cfg.RefreshToken()
+	if err != nil {
+		return "", err
+	}
+	cfg.Token = newToken
+	return newToken, nil
+}
+
 func resetTimer(t *time.Timer, d time.Duration) {
 	if !t.Stop() {
 		select {
@@ -209,7 +270,7 @@ func resetTimer(t *time.Timer, d time.Duration) {
 	t.Reset(d)
 }
 
-func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTimeSlot, tag string) (bool, string, error) {
+func tryBookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTimeSlot, tag string) (bool, string, error) {
 	logger.Info(tag+" attempting to book", logger.Time("at", time.Now()))
 	input := booker.GolfNewBooking2Input{
 		CourseID:   slot.CourseID,
@@ -230,6 +291,9 @@ func tryBookSlot(client booker.ClientInterface, cfg Config, slot *booker.TeeTime
 		reason := resp.Reason
 		if reason == "" {
 			reason = "booking failed"
+		}
+		if booker.IsInvalidToken(resp.Reason) {
+			return false, "", fmt.Errorf("%s: %w", reason, booker.ErrInvalidToken)
 		}
 		return false, "", fmt.Errorf("%s", reason)
 	}
@@ -258,6 +322,9 @@ func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booke
 	}
 	logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
 	if !resp.Status {
+		if booker.IsInvalidToken(resp.Reason) {
+			return fmt.Errorf("tee time status false: %w", booker.ErrInvalidToken)
+		}
 		return fmt.Errorf("tee time status false: %s", reason)
 	}
 	return nil

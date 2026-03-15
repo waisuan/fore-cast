@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"sync"
 	"testing"
 	"time"
 
@@ -249,6 +250,48 @@ func TestRun_CheckTeeTimeStatusError_SkipsBookingAndRetries(t *testing.T) {
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B3", result.BookingID)
 	assert.GreaterOrEqual(t, checkCalls, 3, "CheckTeeTimeStatus should have been retried after errors")
+}
+
+func TestRun_CheckTeeTimeStatusCODE103_RefreshesTokenAndRetries(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Retry = true
+	cfg.Timeout = 5 * time.Second
+	cfg.RetryInterval = time.Millisecond
+	cfg.RefreshToken = func() (string, error) { return "newTok", nil }
+	cfg.RefreshTokenMu = &sync.Mutex{}
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+
+	// CheckTeeTimeStatus returns CODE103 first, then succeeds with new token
+	checkCalls := 0
+	mock.EXPECT().CheckTeeTimeStatus(gomock.Any(), gomock.Any()).DoAndReturn(
+		func(token string, _ booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			checkCalls++
+			if checkCalls == 1 {
+				return &booker.CheckTeeTimeStatusResponse{Status: false, Reason: "CODE103 - Invalid Token"}, nil
+			}
+			assert.Equal(t, "newTok", token, "second check should use refreshed token")
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).AnyTimes()
+	mock.EXPECT().BookTeeTime("newTok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B4"}},
+	}, nil)
+
+	result, err := Run(cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B4", result.BookingID)
+	assert.GreaterOrEqual(t, checkCalls, 2, "CheckTeeTimeStatus should have been retried after CODE103")
 }
 
 func TestResetTimer(t *testing.T) {

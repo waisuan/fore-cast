@@ -49,6 +49,9 @@ type Config struct {
 	MaxParallelSlotsMax  int    `env:"MAX_PARALLEL_SLOTS_MAX" envDefault:"20"` // max allowed per preset (validated in API)
 	SchedulerTxnDate     string `env:"SCHEDULER_TXN_DATE"`                     // override target date (YYYY/MM/DD); empty = 1 week ahead
 
+	// Runner jitter (0 = disabled). Staggers worker startup to avoid thundering herd.
+	RunnerStartupJitterMax time.Duration `env:"RUNNER_STARTUP_JITTER_MAX" envDefault:"75ms"` // max random delay before each worker starts
+
 	// Dry-run (scheduler only): mock Booker API, no real HTTP calls.
 	// BOOKER_DRY_RUN_SCENARIO: success | timeout | empty (default: timeout)
 	// BOOKER_DRY_RUN_TIMEOUT: cap preset timeout for testing (e.g. 30s)

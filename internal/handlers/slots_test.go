@@ -105,6 +105,34 @@ func (s *SlotsHandlerSuite) TestSlots_InvalidToken() {
 	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
+func (s *SlotsHandlerSuite) TestSlots_WithCourseParam() {
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "BRC", TeeTime: "07:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	// 2026/02/25 is Wednesday -> default would be PLC; course=BRC overrides
+	s.mockBooker.EXPECT().
+		GetTeeTimeSlots("token", "BRC", "2026/02/25").
+		Return(slots, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/slots?date=2026/02/25&course=BRC", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Slots(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+	var resp SlotsResponse
+	s.Require().NoError(json.Unmarshal(rec.Body.Bytes(), &resp))
+	s.Assert().Equal("BRC", resp.Course)
+}
+
+func (s *SlotsHandlerSuite) TestSlots_InvalidCourseParam() {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/slots?date=2026/02/25&course=INVALID", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Slots(rec, req)
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
 func (s *SlotsHandlerSuite) TestSlots_WithCutoffFilter() {
 	slots := []booker.TeeTimeSlot{
 		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},

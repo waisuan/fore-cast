@@ -40,7 +40,13 @@ func (h *SlotsHandler) Slots(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, err.Error(), http.StatusBadRequest)
 		return
 	}
-	courseID := slotutil.CourseForDate(date)
+	courseID := r.URL.Query().Get("course")
+	if courseID == "" {
+		courseID = slotutil.CourseForDate(date)
+	} else if courseID != booker.CourseBRC && courseID != booker.CoursePLC {
+		http.Error(w, "invalid course: use BRC or PLC", http.StatusBadRequest)
+		return
+	}
 	slots, err := h.Booker.GetTeeTimeSlots(u.APIToken, courseID, date)
 	if err != nil {
 		if errors.Is(err, booker.ErrInvalidToken) {
