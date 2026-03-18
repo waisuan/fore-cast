@@ -2,6 +2,7 @@ package runner
 
 import (
 	"fmt"
+	"strings"
 	"sync"
 	"testing"
 	"time"
@@ -250,6 +251,72 @@ func TestRun_CheckTeeTimeStatusError_SkipsBookingAndRetries(t *testing.T) {
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B3", result.BookingID)
 	assert.GreaterOrEqual(t, checkCalls, 3, "CheckTeeTimeStatus should have been retried after errors")
+}
+
+func TestRun_FlightAlreadyReserved_StopsThatWorkerOnly(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Retry = true
+	cfg.Timeout = 5 * time.Second
+	cfg.RetryInterval = time.Millisecond
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{
+		Status: false,
+		Reason: MsgFlightAlreadyReserved,
+	}, nil)
+
+	result, err := Run(cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, StatusFailed, result.Status)
+	assert.Contains(t, err.Error(), "no slots booked")
+}
+
+func TestRun_FlightAlreadyReserved_OtherWorkerStillBooks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Retry = true
+	cfg.Timeout = 5 * time.Second
+	cfg.RetryInterval = time.Millisecond
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:08:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(_ string, in booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			if strings.Contains(in.TeeTime, "07:00:00") {
+				return &booker.CheckTeeTimeStatusResponse{Status: false, Reason: MsgFlightAlreadyReserved}, nil
+			}
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).AnyTimes()
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).DoAndReturn(
+		func(_ string, in booker.GolfNewBooking2Input, _ bool) (*booker.BookingResponse, error) {
+			assert.Contains(t, in.TeeTime, "07:08")
+			return &booker.BookingResponse{
+				Status: true,
+				Result: []booker.BookingResultItem{{Status: true, BookingID: "B-flight"}},
+			}, nil
+		},
+	).Times(1)
+
+	result, err := Run(cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B-flight", result.BookingID)
 }
 
 func TestRun_CheckTeeTimeStatusCODE103_RefreshesTokenAndRetries(t *testing.T) {
