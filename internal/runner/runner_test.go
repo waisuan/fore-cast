@@ -191,7 +191,14 @@ func TestRun_Retry_SucceedsAfterRetries(t *testing.T) {
 		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
 	}
 	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil).AnyTimes()
-	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil).AnyTimes()
+
+	checkCalls := 0
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(string, booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			checkCalls++
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).Times(1)
 
 	bookAttempts := 0
 	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).DoAndReturn(
@@ -211,6 +218,7 @@ func TestRun_Retry_SucceedsAfterRetries(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B2", result.BookingID)
+	assert.Equal(t, 1, checkCalls, "after first successful check, runner should retry book only")
 	assert.GreaterOrEqual(t, bookAttempts, 3)
 }
 
