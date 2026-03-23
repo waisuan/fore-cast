@@ -141,6 +141,20 @@ func isFlightAlreadyReservedMessage(s string) bool {
 		strings.Contains(low, "refresh the flight")
 }
 
+// isExpectedPreOpenCheckError matches CheckTeeTimeStatus failures that are normal
+// before the club opens booking (e.g. “open after 10pm”) or while a flight is blocked.
+func isExpectedPreOpenCheckError(err error) bool {
+	if err == nil {
+		return false
+	}
+	s := strings.ToLower(err.Error())
+	if !strings.Contains(s, "tee time status false:") {
+		return false
+	}
+	return strings.Contains(s, "flight time will be open after") ||
+		strings.Contains(s, "this flight is blocked")
+}
+
 // slotTag returns a compact identifier for log lines, e.g. "[7:00 AM S1 T1]".
 func slotTag(slot *booker.TeeTimeSlot) string {
 	t := slotutil.FormatCutoffDisplay(slot.TeeTime)
@@ -194,12 +208,18 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 				if errors.Is(err, booker.ErrInvalidToken) && cfg.RefreshToken != nil {
 					if _, refreshErr := refreshToken(cfg, cfg.Token); refreshErr != nil {
 						logger.Error(tag+" token refresh failed", logger.Err(refreshErr))
-					} else {
-						logger.Info(tag + " token refreshed, retrying")
-						continue
-					}
+				} else {
+					logger.Info(tag + " token refreshed, retrying")
+					continue
 				}
-				logger.Error(tag+" failed to check tee time status", logger.Err(err))
+			}
+				if isExpectedPreOpenCheckError(err) {
+					logger.Info(tag+" tee time not open yet, will retry",
+						logger.String("phase", "pre_open"),
+						logger.Err(err))
+				} else {
+					logger.Error(tag+" failed to check tee time status", logger.Err(err))
+				}
 				if !cfg.Retry {
 					return
 				}
@@ -236,12 +256,24 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 					continue
 				}
 			}
-			logger.Error(tag+" failed to book slot", logger.Err(bookErr))
+			if isLostRaceBookError(bookErr) {
+				logger.Warn(tag+" book lost race, will retry",
+					logger.String("outcome", "lost_race"),
+					logger.Err(bookErr))
+			} else {
+				logger.Error(tag+" failed to book slot", logger.Err(bookErr))
+			}
 		}
 		if booked {
 			msg := fmt.Sprintf("Booked %s %s (TeeBox %s) on %s [%s]. BookingID: %s",
 				slot.TeeTime, slot.Session, slot.TeeBox.String(), cfg.TxnDate, cfg.CourseID, bookingID)
-			logger.Info(tag + " " + msg)
+			logger.Info(tag+" "+msg,
+				logger.String("event", "booking_success"),
+				logger.String("booking_id", bookingID),
+				logger.String("tee_time", slot.TeeTime),
+				logger.String("tee_box", slot.TeeBox.String()),
+				logger.String("course_id", cfg.CourseID),
+				logger.String("txn_date", cfg.TxnDate))
 			once.Do(func() {
 				cancel()
 				outcomeCh <- Result{
@@ -310,7 +342,7 @@ func isLostRaceBookError(err error) bool {
 		strings.Contains(s, "no longer available")
 }
 
-// tryBookSlot calls BookTeeTime. On flaky lost-race style errors it immediately retries once.
+// tryBookSlot calls BookTeeTime once; runWorker retries on a schedule for lost races.
 func tryBookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTimeSlot, tag string) (booked bool, bookingID string, err error) {
 	input := booker.GolfNewBooking2Input{
 		CourseID:   slot.CourseID,
@@ -323,42 +355,22 @@ func tryBookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTim
 		IPaddress:  cfg.UserName,
 		Holes:      18,
 	}
-	bookOnce := func() (bool, string, error) {
-		resp, e := client.BookTeeTime(cfg.Token, input, cfg.Debug)
-		if e != nil {
-			return false, "", e
-		}
-		if !resp.Status || len(resp.Result) == 0 || !resp.Result[0].Status {
-			reason := resp.Reason
-			if reason == "" {
-				reason = "booking failed"
-			}
-			if booker.IsInvalidToken(resp.Reason) {
-				return false, "", fmt.Errorf("%s: %w", reason, booker.ErrInvalidToken)
-			}
-			return false, "", fmt.Errorf("%s", reason)
-		}
-		return true, resp.Result[0].BookingID, nil
-	}
-
 	logger.Info(tag+" attempting to book", logger.Time("at", time.Now()))
-	booked, bookingID, err = bookOnce()
-	if booked {
-		return true, bookingID, nil
+	resp, e := client.BookTeeTime(cfg.Token, input, cfg.Debug)
+	if e != nil {
+		return false, "", e
 	}
-	if errors.Is(err, booker.ErrInvalidToken) {
-		return false, "", err
+	if !resp.Status || len(resp.Result) == 0 || !resp.Result[0].Status {
+		reason := resp.Reason
+		if reason == "" {
+			reason = "booking failed"
+		}
+		if booker.IsInvalidToken(resp.Reason) {
+			return false, "", fmt.Errorf("%s: %w", reason, booker.ErrInvalidToken)
+		}
+		return false, "", fmt.Errorf("%s", reason)
 	}
-	if !isLostRaceBookError(err) {
-		return false, "", err
-	}
-
-	logger.Info(tag + " book flaky response, immediate second attempt")
-	booked, bookingID, err2 := bookOnce()
-	if booked {
-		return true, bookingID, nil
-	}
-	return false, "", err2
+	return true, resp.Result[0].BookingID, nil
 }
 
 // checkTeeTimeStatus calls the API to validate the slot. Returns an error if the check fails;
