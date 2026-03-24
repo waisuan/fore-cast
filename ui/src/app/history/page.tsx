@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { formatDate } from '@/utils/date';
+import { formatDate, formatDateTimeShortMY } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 
@@ -85,12 +85,7 @@ export default function HistoryPage() {
                   </span>
                 </div>
                 <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
-                  {new Date(item.created_at).toLocaleString(undefined, {
-                    month: 'short',
-                    day: 'numeric',
-                    hour: '2-digit',
-                    minute: '2-digit',
-                  })}
+                  {formatDateTimeShortMY(item.created_at)}
                   {' · '}
                   {item.tee_time || '-'}
                   {item.tee_box ? ` / Box ${item.tee_box}` : ''}
@@ -117,12 +112,7 @@ export default function HistoryPage() {
                 {data.map((item) => (
                   <tr key={item.id} className="text-gray-900 dark:text-gray-100">
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
-                      {new Date(item.created_at).toLocaleString(undefined, {
-                        month: 'short',
-                        day: 'numeric',
-                        hour: '2-digit',
-                        minute: '2-digit',
-                      })}
+                      {formatDateTimeShortMY(item.created_at)}
                     </td>
                     <td className="px-3 py-2">
                       {formatDate(item.txn_date)} &middot; {item.course_id}

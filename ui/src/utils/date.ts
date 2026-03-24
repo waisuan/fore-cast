@@ -1,3 +1,6 @@
+/** Malaysia Time (UTC+8, no DST) — used for all user-visible dates/times in the UI. */
+export const MY_TIMEZONE = 'Asia/Kuala_Lumpur';
+
 /**
  * Return today's date in YYYY-MM-DD format (local timezone).
  */
@@ -22,11 +25,44 @@ export function formatDate(raw: string): string {
   const normalized = raw.replace(/\//g, '-');
   const d = new Date(normalized);
   if (isNaN(d.getTime())) return raw;
-  return d.toLocaleDateString(undefined, {
+  return d.toLocaleDateString('en-MY', {
+    timeZone: MY_TIMEZONE,
     weekday: 'short',
     year: 'numeric',
     month: 'short',
     day: 'numeric',
+  });
+}
+
+/**
+ * Full timestamp in Malaysia time (e.g. last scheduler run).
+ */
+export function formatDateTimeMY(iso: string | Date): string {
+  const d = typeof iso === 'string' ? new Date(iso) : iso;
+  if (isNaN(d.getTime())) return typeof iso === 'string' ? iso : '';
+  return d.toLocaleString('en-MY', {
+    timeZone: MY_TIMEZONE,
+    year: 'numeric',
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
+    second: '2-digit',
+  });
+}
+
+/**
+ * Short timestamp in Malaysia time (e.g. history list).
+ */
+export function formatDateTimeShortMY(iso: string | Date): string {
+  const d = typeof iso === 'string' ? new Date(iso) : iso;
+  if (isNaN(d.getTime())) return '';
+  return d.toLocaleString('en-MY', {
+    timeZone: MY_TIMEZONE,
+    month: 'short',
+    day: 'numeric',
+    hour: '2-digit',
+    minute: '2-digit',
   });
 }
 

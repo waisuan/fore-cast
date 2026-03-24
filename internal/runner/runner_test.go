@@ -53,6 +53,29 @@ func TestRun_Success(t *testing.T) {
 	assert.Contains(t, result.Message, "Booked")
 }
 
+func TestRun_Success_SkipsCheckFor0746Experiment(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:46:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B1"}},
+	}, nil)
+
+	result, err := Run(cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B1", result.BookingID)
+}
+
 func TestRun_NoSlotsBeforeCutoff(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

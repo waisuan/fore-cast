@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
+import { formatDateTimeMY } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from './Spinner';
 
@@ -94,7 +95,7 @@ export default function HomeContent() {
           )}
           {last_run_at && !isNaN(new Date(last_run_at).getTime()) && (
             <p className="mt-1 text-xs opacity-60">
-              {new Date(last_run_at).toLocaleString()}
+              {formatDateTimeMY(last_run_at)}
             </p>
           )}
         </div>

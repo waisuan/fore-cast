@@ -24,6 +24,10 @@ const (
 
 	// MsgFlightAlreadyReserved is the API reason when a tee time’s flight is already reserved.
 	MsgFlightAlreadyReserved = "The flight has already been reserved; kindly refresh the flight"
+
+	// experimentPrecheckSkipTeeTime is the API TeeTime for 7:46 AM. For this slot only we skip
+	// CheckTeeTimeStatus and go straight to BookTeeTime (timing / API behaviour experiment).
+	experimentPrecheckSkipTeeTime = "1899-12-30T07:46:00"
 )
 
 // Config holds input parameters for a booking run.
@@ -161,10 +165,14 @@ func slotTag(slot *booker.TeeTimeSlot) string {
 	return fmt.Sprintf("[%s S%s T%s]", t, slot.Session, slot.TeeBox.String())
 }
 
+func slotSkipsPrecheckExperiment(slot *booker.TeeTimeSlot) bool {
+	return slot != nil && slot.TeeTime == experimentPrecheckSkipTeeTime
+}
+
 // runWorker runs the booking loop for one slot. When cfg.Retry is true, it polls
-// CheckTeeTimeStatus until the slot reports available, then retries BookTeeTime only
-// until success or ctx is cancelled (another worker booked or timeout), without
-// re-checking between book attempts.
+// CheckTeeTimeStatus until the slot reports available (except experimentPrecheckSkipTeeTime,
+// which skips straight to book), then retries BookTeeTime only until success or ctx is
+// cancelled (another worker booked or timeout), without re-checking between book attempts.
 func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, target booker.TeeTimeSlot,
 	once *sync.Once, outcomeCh chan<- Result, cancel context.CancelFunc) {
 	// Stagger worker startup to avoid thundering herd
@@ -200,7 +208,11 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 			logger.String("tee_box", slot.TeeBox.String()))
 
 		if !confirmedAvailable {
-			if err := checkTeeTimeStatus(client, cfg.Token, slot, tag, cfg.TxnDate, cfg.UserName); err != nil {
+			if slotSkipsPrecheckExperiment(slot) {
+				logger.Debug(tag+" skipping CheckTeeTimeStatus (experiment)",
+					logger.String("tee_time", slot.TeeTime))
+				confirmedAvailable = true
+			} else if err := checkTeeTimeStatus(client, cfg.Token, slot, tag, cfg.TxnDate, cfg.UserName); err != nil {
 				if isFlightAlreadyReservedMessage(err.Error()) {
 					logger.Warn(tag+" flight already reserved for this slot, worker stopping", logger.Err(err))
 					return
@@ -230,8 +242,9 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 				case <-timer.C:
 				}
 				continue
+			} else {
+				confirmedAvailable = true
 			}
-			confirmedAvailable = true
 		}
 
 		select {
