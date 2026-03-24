@@ -1,20 +1,40 @@
 package logger
 
 import (
+	"os"
+	"strings"
 	"time"
 
 	"go.uber.org/zap"
+	"go.uber.org/zap/zapcore"
 )
 
 // Field is an alias for zap.Field so callers need not import zap.
 type Field = zap.Field
 
+func logLevelFromEnv() zapcore.Level {
+	switch strings.ToLower(strings.TrimSpace(os.Getenv("LOG_LEVEL"))) {
+	case "debug":
+		return zapcore.DebugLevel
+	case "warn", "warning":
+		return zapcore.WarnLevel
+	case "error":
+		return zapcore.ErrorLevel
+	default:
+		return zapcore.InfoLevel
+	}
+}
+
 // New creates a production logger with JSON encoding.
 // Logs go to stdout so Railway (and similar platforms) parse the "level" field
 // from JSON and display correctly, rather than treating stderr as errors.
+//
+// Set LOG_LEVEL=debug (scheduler or locally) to include Debug-level lines such as
+// per-iteration runner logs.
 func New() *zap.Logger {
 	cfg := zap.NewProductionConfig()
 	cfg.OutputPaths = []string{"stdout"}
+	cfg.Level = zap.NewAtomicLevelAt(logLevelFromEnv())
 	return zap.Must(cfg.Build())
 }
 

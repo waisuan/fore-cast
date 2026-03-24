@@ -194,7 +194,7 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 		default:
 		}
 
-		logger.Info(tag+" slot",
+		logger.Debug(tag+" slot",
 			logger.String("tee_time", slot.TeeTime),
 			logger.String("session", slot.Session),
 			logger.String("tee_box", slot.TeeBox.String()))
@@ -214,7 +214,7 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 					}
 				}
 				if isExpectedPreOpenCheckError(err) {
-					logger.Info(tag+" tee time not open yet, will retry",
+					logger.Debug(tag+" tee time not open yet, will retry",
 						logger.String("phase", "pre_open"),
 						logger.Err(err))
 				} else {
@@ -257,7 +257,7 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 				}
 			}
 			if isLostRaceBookError(bookErr) {
-				logger.Warn(tag+" book lost race, will retry",
+				logger.Debug(tag+" book lost race, will retry",
 					logger.String("outcome", "lost_race"),
 					logger.Err(bookErr))
 			} else {
@@ -355,7 +355,7 @@ func tryBookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTim
 		IPaddress:  cfg.UserName,
 		Holes:      18,
 	}
-	logger.Info(tag+" attempting to book", logger.Time("at", time.Now()))
+	logger.Debug(tag+" attempting to book", logger.Time("at", time.Now()))
 	resp, e := client.BookTeeTime(cfg.Token, input, cfg.Debug)
 	if e != nil {
 		return false, "", e
@@ -393,7 +393,7 @@ func checkTeeTimeStatus(client booker.ClientInterface, token string, slot *booke
 	if reason == "" {
 		reason = "slot not available"
 	}
-	logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
+	logger.Debug(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
 	if !resp.Status {
 		if booker.IsInvalidToken(resp.Reason) {
 			return fmt.Errorf("tee time status false: %w", booker.ErrInvalidToken)
