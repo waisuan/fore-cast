@@ -208,11 +208,11 @@ func runWorker(ctx context.Context, client booker.ClientInterface, cfg *Config, 
 				if errors.Is(err, booker.ErrInvalidToken) && cfg.RefreshToken != nil {
 					if _, refreshErr := refreshToken(cfg, cfg.Token); refreshErr != nil {
 						logger.Error(tag+" token refresh failed", logger.Err(refreshErr))
-				} else {
-					logger.Info(tag + " token refreshed, retrying")
-					continue
+					} else {
+						logger.Info(tag + " token refreshed, retrying")
+						continue
+					}
 				}
-			}
 				if isExpectedPreOpenCheckError(err) {
 					logger.Info(tag+" tee time not open yet, will retry",
 						logger.String("phase", "pre_open"),
