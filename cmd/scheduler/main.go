@@ -18,6 +18,38 @@ import (
 	"github.com/waisuan/alfred/migrations"
 )
 
+func sleepUntilBookingOpen(cfg *deps.Config) {
+	h, mi, minH := cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy, cfg.SchedulerBookingWaitMinHourMy
+	if h < 0 || h > 23 || mi < 0 || mi > 59 || minH < 0 || minH > 23 {
+		logger.Warn("invalid scheduler booking wait times, skipping wait",
+			logger.Int("hour", h), logger.Int("minute", mi), logger.Int("min_hour", minH))
+		return
+	}
+	tz := cfg.SchedulerTimezone
+	if tz == "" {
+		tz = "Asia/Kuala_Lumpur"
+	}
+	loc, err := time.LoadLocation(tz)
+	if err != nil {
+		logger.Warn("skipping booking wait (timezone)", logger.String("zone", tz), logger.Err(err))
+		return
+	}
+	now := time.Now().In(loc)
+	if now.Hour() < minH {
+		return
+	}
+	target := time.Date(now.Year(), now.Month(), now.Day(), h, mi, 0, 0, loc)
+	if !now.Before(target) {
+		return
+	}
+	d := target.Sub(now)
+	logger.Info("waiting until local time before booking attempts",
+		logger.String("timezone", tz),
+		logger.String("until_local", target.Format("2006-01-02 15:04:05 MST")),
+		logger.Duration("sleep", d.Round(time.Second)))
+	time.Sleep(d)
+}
+
 func main() {
 	d, err := deps.Initialise(migrations.FS)
 	if err != nil {
@@ -46,6 +78,8 @@ func run(d *deps.Dependencies) error {
 
 	if d.Config.BookerDryRun {
 		logger.Info("dry-run: booker api mocked", logger.String("scenario", d.Config.BookerDryRunScenario))
+	} else {
+		sleepUntilBookingOpen(d.Config)
 	}
 	logger.Info("found enabled presets", logger.Int("count", len(presets)), logger.Int("concurrency", d.Config.MaxConcurrentPresets))
 	start := time.Now()

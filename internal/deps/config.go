@@ -49,6 +49,13 @@ type Config struct {
 	MaxParallelSlotsMax  int    `env:"MAX_PARALLEL_SLOTS_MAX" envDefault:"20"` // max allowed per preset (validated in API)
 	SchedulerTxnDate     string `env:"SCHEDULER_TXN_DATE"`                     // override target date (YYYY/MM/DD); empty = 1 week ahead
 
+	// Pre-booking idle (scheduler only, not dry-run): in SchedulerTimezone, if local hour >= SchedulerBookingWaitMinHourMy
+	// and time is before SchedulerBookingWaitHourMy:Minute, sleep until that instant before any Booker calls.
+	SchedulerTimezone             string `env:"SCHEDULER_TIMEZONE" envDefault:"Asia/Kuala_Lumpur"`
+	SchedulerBookingWaitHourMy    int    `env:"SCHEDULER_BOOKING_WAIT_HOUR_MY" envDefault:"21"`
+	SchedulerBookingWaitMinuteMy  int    `env:"SCHEDULER_BOOKING_WAIT_MINUTE_MY" envDefault:"59"`
+	SchedulerBookingWaitMinHourMy int    `env:"SCHEDULER_BOOKING_WAIT_MIN_HOUR_MY" envDefault:"21"` // only wait when local hour is >= this (avoids idling until evening on morning runs)
+
 	// Runner jitter (0 = disabled). Staggers worker startup to avoid thundering herd.
 	RunnerStartupJitterMax time.Duration `env:"RUNNER_STARTUP_JITTER_MAX" envDefault:"0"` // max random delay before each worker starts (0 = disabled)
 
