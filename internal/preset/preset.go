@@ -7,11 +7,10 @@ import (
 )
 
 const (
-	DefaultCutoff           = "8:15"
-	DefaultRetryInterval    = "1s"
-	DefaultTimeout          = "10m"
-	MinRetryInterval        = "0s"
-	DefaultMaxParallelSlots = 5
+	DefaultCutoff        = "8:15"
+	DefaultRetryInterval = "1s"
+	DefaultTimeout       = "10m"
+	MinRetryInterval     = "0s"
 )
 
 // MinRetryIntervalDuration is the minimum allowed retry interval (0s).
@@ -39,46 +38,44 @@ func NewService(conn *sql.DB) Service {
 // Preset represents a user's auto-booker configuration. Credentials are stored
 // in user_credentials; preset references user_name.
 type Preset struct {
-	ID               int
-	UserName         string
-	UpdatedAt        time.Time
-	Course           sql.NullString
-	Cutoff           string
-	RetryInterval    string
-	Timeout          string
-	MaxParallelSlots int
-	NtfyTopic        sql.NullString
-	Enabled          bool
-	LastRunStatus    string
-	LastRunMessage   string
-	LastRunAt        sql.NullTime
+	ID             int
+	UserName       string
+	UpdatedAt      time.Time
+	Course         sql.NullString
+	Cutoff         string
+	RetryInterval  string
+	Timeout        string
+	NtfyTopic      sql.NullString
+	Enabled        bool
+	LastRunStatus  string
+	LastRunMessage string
+	LastRunAt      sql.NullTime
 }
 
 func (s *service) UpsertPreset(p Preset) error {
 	_, err := s.conn.Exec(`
-		INSERT INTO booking_presets (user_name, course, cutoff, retry_interval, timeout, max_parallel_slots, ntfy_topic, enabled, updated_at)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, NOW())
+		INSERT INTO booking_presets (user_name, course, cutoff, retry_interval, timeout, ntfy_topic, enabled, updated_at)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, NOW())
 		ON CONFLICT (user_name) DO UPDATE SET
 			course = EXCLUDED.course,
 			cutoff = EXCLUDED.cutoff,
 			retry_interval = EXCLUDED.retry_interval,
 			timeout = EXCLUDED.timeout,
-			max_parallel_slots = EXCLUDED.max_parallel_slots,
 			ntfy_topic = EXCLUDED.ntfy_topic,
 			enabled = EXCLUDED.enabled,
 			updated_at = NOW()`,
-		p.UserName, p.Course, p.Cutoff, p.RetryInterval, p.Timeout, p.MaxParallelSlots, p.NtfyTopic, p.Enabled)
+		p.UserName, p.Course, p.Cutoff, p.RetryInterval, p.Timeout, p.NtfyTopic, p.Enabled)
 	return err
 }
 
 func (s *service) GetPreset(userName string) (*Preset, error) {
 	var p Preset
 	err := s.conn.QueryRow(`
-		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, max_parallel_slots, ntfy_topic, enabled,
+		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at
 		FROM booking_presets
 		WHERE user_name = $1`, userName).
-		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.MaxParallelSlots, &p.NtfyTopic, &p.Enabled,
+		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
@@ -91,7 +88,7 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 
 func (s *service) GetEnabledPresets() ([]Preset, error) {
 	rows, err := s.conn.Query(`
-		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, max_parallel_slots, ntfy_topic, enabled,
+		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at
 		FROM booking_presets
 		WHERE enabled = true
@@ -105,7 +102,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 	for rows.Next() {
 		var p Preset
 		if err := rows.Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff,
-			&p.RetryInterval, &p.Timeout, &p.MaxParallelSlots, &p.NtfyTopic, &p.Enabled,
+			&p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt); err != nil {
 			return nil, err
 		}

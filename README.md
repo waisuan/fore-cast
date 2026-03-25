@@ -9,7 +9,8 @@ Built and deployed on [Railway](https://railway.app).
 1. Logs in with your club member credentials.
 2. Fetches available tee time slots for the target date (default: 1 week ahead).
 3. Filters slots before the cutoff time (default: 8:15 AM).
-4. Checks each slot's availability, then attempts to book the earliest one.
+4. Walks those slots in time order: checks each slot's status, then attempts at most one book per slot (skipping when the API says the flight is already reserved).
+5. Repeats full passes until a booking succeeds, every slot is already reserved, or the preset timeout elapses. The retry interval is the pause **between** full passes, not between individual slots.
 
 Course is selected automatically based on the day of the week (configurable per preset in the web UI).
 
@@ -85,7 +86,6 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `DATABASE_URL` | *(required)* | Postgres connection string |
 | `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
 | `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
-| `MAX_PARALLEL_SLOTS` | `5` | Max slots to try in parallel per preset (each worker retries until it gets a slot or a neighbour wins) |
 | `SCHEDULER_TXN_DATE` | *(none)* | Override target date (YYYY/MM/DD); empty = 1 week ahead. Useful for testing. |
 | `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
 | `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |

@@ -47,7 +47,7 @@ func New(d *deps.Dependencies) http.Handler {
 	historyHandler := &handlers.HistoryHandler{Service: d.History}
 	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
 
-	presetHandler := &handlers.PresetHandler{Service: d.Preset, MaxParallelSlotsMax: d.Config.MaxParallelSlotsMax}
+	presetHandler := &handlers.PresetHandler{Service: d.Preset}
 	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
 	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
 

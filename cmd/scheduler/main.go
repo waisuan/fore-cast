@@ -100,9 +100,8 @@ func run(d *deps.Dependencies) error {
 				logger.String("user", p.UserName),
 				logger.String("course", p.Course.String),
 				logger.String("cutoff", p.Cutoff),
-				logger.String("retry", p.RetryInterval),
-				logger.String("timeout", p.Timeout),
-				logger.Int("max_parallel_slots", p.MaxParallelSlots))
+				logger.String("retry_interval", p.RetryInterval),
+				logger.String("timeout", p.Timeout))
 			if err := processPreset(d, p); err != nil {
 				logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
 				mu.Lock()
@@ -186,23 +185,15 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		retryInterval = preset.MinRetryIntervalDuration
 	}
 
-	refreshMu := &sync.Mutex{}
 	cfg := runner.Config{
-		UserName:         p.UserName,
-		Token:            token,
-		TxnDate:          txnDate,
-		CourseID:         courseID,
-		CutoffTeeTime:    cutoffTeeTime,
-		RetryInterval:    retryInterval,
-		Retry:            true,
-		Debug:            false,
-		Timeout:          timeout,
-		MaxParallelSlots: p.MaxParallelSlots,
-		StartupJitterMax: d.Config.RunnerStartupJitterMax,
-		RefreshToken: func() (string, error) {
-			return d.Booker.Login(p.UserName, password)
-		},
-		RefreshTokenMu: refreshMu,
+		UserName:      p.UserName,
+		Token:         token,
+		TxnDate:       txnDate,
+		CourseID:      courseID,
+		CutoffTeeTime: cutoffTeeTime,
+		RetryInterval: retryInterval,
+		Debug:         false,
+		Timeout:       timeout,
 	}
 
 	logger.Info("starting run", logger.String("user", p.UserName), logger.String("course", courseID), logger.String("txn_date", txnDate))
