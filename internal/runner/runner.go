@@ -184,7 +184,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		if reason == "" && !resp.Status {
 			reason = "slot not available"
 		}
-		logger.Debug(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
+		logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
 
 		if !resp.Status && booker.IsInvalidToken(resp.Reason) {
 			return false, Result{}, false, fmt.Errorf("tee time status: %w", booker.ErrInvalidToken)
