@@ -205,6 +205,17 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), err.Error())
 		return err
 	}
+
+	logger.Info("run finished",
+		logger.String("user", p.UserName),
+		logger.String("status", string(result.Status)),
+		logger.String("message", result.Message),
+		logger.String("booking_id", result.BookingID),
+		logger.String("tee_time", result.TeeTime),
+		logger.String("tee_box", result.TeeBox),
+		logger.String("course_id", result.CourseID),
+		logger.String("txn_date", txnDate))
+
 	if result.Message != "" {
 		notifyUser(d.Notify, p, result.Message)
 	}
