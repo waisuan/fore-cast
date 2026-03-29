@@ -5,7 +5,7 @@ import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 import { formatDateTimeMY } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
-import Spinner from './Spinner';
+import SchedulerRunningBanner from './SchedulerRunningBanner';
 
 interface PresetStatus {
   enabled: boolean;
@@ -18,21 +18,41 @@ export default function HomeContent() {
   const { addToast } = useToast();
   const [status, setStatus] = useState<PresetStatus | null>(null);
   const [dismissedId, setDismissedId] = useState<string | null>(null);
+  const [cancelLoading, setCancelLoading] = useState(false);
 
-  const load = useCallback(async () => {
+  const load = useCallback(
+    async (opts?: { silent?: boolean }) => {
+      const silent = opts?.silent ?? false;
+      try {
+        const res = await api.get<PresetStatus & { defaults?: unknown }>(API_ENDPOINTS.preset);
+        setStatus({
+          enabled: res.enabled ?? false,
+          last_run_status: res.last_run_status ?? 'idle',
+          last_run_message: res.last_run_message ?? '',
+          last_run_at: res.last_run_at ?? null,
+        });
+      } catch (e) {
+        setStatus(null);
+        if (!silent) {
+          addToast(e instanceof ApiError ? e.message : 'Failed to load status', 'error');
+        }
+      }
+    },
+    [addToast],
+  );
+
+  const cancelRun = useCallback(async () => {
+    setCancelLoading(true);
     try {
-      const res = await api.get<PresetStatus & { defaults?: unknown }>(API_ENDPOINTS.preset);
-      setStatus({
-        enabled: res.enabled ?? false,
-        last_run_status: res.last_run_status ?? 'idle',
-        last_run_message: res.last_run_message ?? '',
-        last_run_at: res.last_run_at ?? null,
-      });
+      await api.post(API_ENDPOINTS.presetCancel);
+      addToast('Cancelling run…', 'info');
+      await load({ silent: true });
     } catch (e) {
-      setStatus(null);
-      addToast(e instanceof ApiError ? e.message : 'Failed to load status', 'error');
+      addToast(e instanceof ApiError ? e.message : 'Failed to cancel', 'error');
+    } finally {
+      setCancelLoading(false);
     }
-  }, [addToast]);
+  }, [addToast, load]);
 
   useEffect(() => {
     load();
@@ -52,22 +72,34 @@ export default function HomeContent() {
     enabled &&
     last_run_status &&
     last_run_status !== 'idle' &&
-    (last_run_status === 'running' || isRecent) &&
+    last_run_status !== 'running' &&
+    isRecent &&
     bannerId !== dismissedId;
+
+  const schedulerRunning = last_run_status === 'running';
+
+  useEffect(() => {
+    if (!schedulerRunning) return;
+    const id = setInterval(() => {
+      void load({ silent: true });
+    }, 2000);
+    return () => clearInterval(id);
+  }, [schedulerRunning, load]);
 
   return (
     <div className="space-y-8">
       <p className="text-sm text-gray-600 dark:text-gray-400">
         Having trouble loading slots or your bookings? Try logging out (menu above) and signing in again to refresh your session.
       </p>
+      {schedulerRunning && (
+        <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
       {showBanner && (
         <div
           className={`relative rounded-lg border px-4 py-3 pr-10 text-sm ${
-            last_run_status === 'running'
-              ? 'border-blue-200 bg-blue-50 text-blue-800 dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300'
-              : last_run_status === 'success'
-                ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300'
-                : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300'
+            last_run_status === 'success'
+              ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300'
+              : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300'
           }`}
         >
           <button
@@ -81,16 +113,13 @@ export default function HomeContent() {
             </svg>
           </button>
           <div className="flex items-center gap-2">
-            {last_run_status === 'running' && <Spinner className="h-3.5 w-3.5" />}
             <span className="font-medium">
-              {last_run_status === 'running'
-                ? 'Scheduler is running...'
-                : last_run_status === 'success'
-                  ? 'Last run: booked successfully'
-                  : 'Last run: failed'}
+              {last_run_status === 'success'
+                ? 'Last run: booked successfully'
+                : 'Last run: failed'}
             </span>
           </div>
-          {last_run_message && last_run_status !== 'running' && (
+          {last_run_message && (
             <p className="mt-1 text-xs opacity-80">{last_run_message}</p>
           )}
           {last_run_at && !isNaN(new Date(last_run_at).getTime()) && (

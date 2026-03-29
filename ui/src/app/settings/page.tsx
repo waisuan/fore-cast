@@ -4,6 +4,7 @@ import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
+import SchedulerRunningBanner from '@/components/SchedulerRunningBanner';
 
 async function copyToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -61,9 +62,12 @@ export default function SettingsPage() {
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [cancelLoading, setCancelLoading] = useState(false);
+  const [lastRunStatus, setLastRunStatus] = useState<string>('idle');
 
-  const load = useCallback(async () => {
-    setLoading(true);
+  const load = useCallback(async (opts?: { silent?: boolean }) => {
+    const silent = opts?.silent ?? false;
+    if (!silent) setLoading(true);
     try {
       const res = await api.get<PresetData>(API_ENDPOINTS.preset);
       setDefaults(res.defaults ?? null);
@@ -74,16 +78,42 @@ export default function SettingsPage() {
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
+      setLastRunStatus(res.last_run_status ?? 'idle');
     } catch (e) {
-      addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
+      if (!silent) {
+        addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
+      }
     } finally {
-      setLoading(false);
+      if (!silent) setLoading(false);
     }
   }, [addToast]);
 
   useEffect(() => {
     load();
   }, [load]);
+
+  const schedulerRunning = lastRunStatus === 'running';
+
+  const cancelRun = useCallback(async () => {
+    setCancelLoading(true);
+    try {
+      await api.post(API_ENDPOINTS.presetCancel);
+      addToast('Cancelling run…', 'info');
+      await load({ silent: true });
+    } catch (e) {
+      addToast(e instanceof ApiError ? e.message : 'Failed to cancel', 'error');
+    } finally {
+      setCancelLoading(false);
+    }
+  }, [addToast, load]);
+
+  useEffect(() => {
+    if (!schedulerRunning) return;
+    const id = setInterval(() => {
+      void load({ silent: true });
+    }, 2000);
+    return () => clearInterval(id);
+  }, [schedulerRunning, load]);
 
   const MIN_RETRY_MS = 0;
 
@@ -117,6 +147,7 @@ export default function SettingsPage() {
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
+    if (schedulerRunning) return;
     setSaving(true);
     try {
       let retryInterval = retryIntervalVal.trim();
@@ -165,13 +196,26 @@ export default function SettingsPage() {
       <h1 className="text-2xl font-semibold text-gray-900 dark:text-white">
         Auto-booker settings
       </h1>
+      {schedulerRunning && (
+        <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
       <p className="text-sm text-gray-600 dark:text-gray-400">
         Configure your auto-booking preset. When enabled, the scheduler will
         automatically attempt to book a slot for <strong>1 week ahead</strong> on
         your behalf each time it runs.
       </p>
+      {schedulerRunning && (
+        <p className="text-sm text-amber-800 dark:text-amber-200/90">
+          Settings are read-only while the scheduler is running. Use <strong>Cancel run</strong> above
+          to stop, or wait until the run finishes.
+        </p>
+      )}
       <form onSubmit={handleSubmit} className="flex flex-col gap-4">
-        <fieldset disabled={saving} className="flex flex-col gap-4" aria-busy={saving}>
+        <fieldset
+          disabled={saving || schedulerRunning}
+          className="flex flex-col gap-4"
+          aria-busy={saving}
+        >
           <legend className="sr-only">Auto-booker configuration</legend>
         <div>
           <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
@@ -311,7 +355,7 @@ export default function SettingsPage() {
         </fieldset>
         <button
           type="submit"
-          disabled={saving}
+          disabled={saving || schedulerRunning}
           aria-busy={saving}
           className="w-full max-w-xs rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
         >
