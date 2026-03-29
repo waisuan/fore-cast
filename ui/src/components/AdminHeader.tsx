@@ -8,7 +8,6 @@ import { useAuth } from '@/contexts/AuthContext';
 const adminNavLinks = [
   { href: '/admin/users', label: 'Users' },
   { href: '/admin/register', label: 'Register user' },
-  { href: '/admin/delete', label: 'Remove user / preset' },
 ] as const;
 
 export default function AdminHeader() {

@@ -79,18 +79,12 @@ export default function AdminRegisterPage() {
             {submitting ? 'Registering…' : 'Register'}
           </button>
         </form>
-        <p className="mt-4 space-y-2 text-center text-sm">
+        <p className="mt-4 text-center text-sm">
           <Link
             href="/admin/users"
-            className="block text-blue-600 hover:underline dark:text-blue-400"
+            className="text-blue-600 hover:underline dark:text-blue-400"
           >
             View all users
-          </Link>
-          <Link
-            href="/admin/delete"
-            className="block text-blue-600 hover:underline dark:text-blue-400"
-          >
-            Remove user or preset
           </Link>
         </p>
     </div>
