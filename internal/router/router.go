@@ -46,8 +46,19 @@ func New(d *deps.Dependencies) http.Handler {
 	api.HandleFunc("/auth/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/auth/me", authHandler.Me).Methods(http.MethodGet)
 
-	// Routes that need 3rd party token (TokenRefresh obtains it on-demand from credentials)
-	bookerAPI := api.PathPrefix("").Subrouter()
+	// Member-only: booking, history, presets (admins use /admin only in the UI; API is blocked too)
+	member := api.PathPrefix("").Subrouter()
+	member.Use(middlewares.DenyAdmin)
+
+	historyHandler := &handlers.HistoryHandler{Service: d.History}
+	member.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
+
+	presetHandler := &handlers.PresetHandler{Service: d.Preset}
+	member.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
+	member.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
+	member.HandleFunc("/preset/cancel", presetHandler.CancelRun).Methods(http.MethodPost)
+
+	bookerAPI := member.PathPrefix("").Subrouter()
 	bookerAPI.Use(middlewares.TokenRefresh(d.Booker, d.Credentials, d.Config.EncryptionKey))
 	slotsHandler := &handlers.SlotsHandler{Booker: d.Booker}
 	bookerAPI.HandleFunc("/slots", slotsHandler.Slots).Methods(http.MethodGet)
@@ -55,14 +66,6 @@ func New(d *deps.Dependencies) http.Handler {
 	bookerAPI.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
 	bookerAPI.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	bookerAPI.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
-
-	historyHandler := &handlers.HistoryHandler{Service: d.History}
-	api.HandleFunc("/history", historyHandler.GetHistory).Methods(http.MethodGet)
-
-	presetHandler := &handlers.PresetHandler{Service: d.Preset}
-	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
-	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
-	api.HandleFunc("/preset/cancel", presetHandler.CancelRun).Methods(http.MethodPost)
 
 	return r
 }

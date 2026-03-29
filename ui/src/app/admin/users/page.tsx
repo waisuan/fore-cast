@@ -49,8 +49,7 @@ export default function AdminUsersPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col bg-gray-50 px-4 py-8 dark:bg-gray-900">
-      <div className="mx-auto w-full max-w-2xl">
+    <div>
         <h1 className="mb-2 text-xl font-semibold text-gray-900 dark:text-white">Users</h1>
         <p className="mb-6 text-sm text-gray-600 dark:text-gray-400">
           Club member accounts. Promote a user to ADMIN so they can manage registrations and
@@ -133,11 +132,7 @@ export default function AdminUsersPage() {
           <Link href="/admin/delete" className="block text-blue-600 hover:underline dark:text-blue-400">
             Remove user or preset
           </Link>
-          <Link href="/" className="block text-blue-600 hover:underline dark:text-blue-400">
-            ← Back to app
-          </Link>
         </p>
-      </div>
     </div>
   );
 }

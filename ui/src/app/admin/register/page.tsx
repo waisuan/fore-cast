@@ -33,8 +33,7 @@ export default function AdminRegisterPage() {
   }
 
   return (
-    <div className="flex min-h-screen flex-col items-center justify-center bg-gray-50 px-4 dark:bg-gray-900">
-      <div className="w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow dark:border-gray-700 dark:bg-gray-800">
+    <div className="mx-auto w-full max-w-sm rounded-lg border border-gray-200 bg-white p-6 shadow dark:border-gray-700 dark:bg-gray-800">
         <h1 className="mb-6 text-xl font-semibold text-gray-900 dark:text-white">
           Admin: Register user
         </h1>
@@ -93,11 +92,7 @@ export default function AdminRegisterPage() {
           >
             Remove user or preset
           </Link>
-          <Link href="/" className="block text-blue-600 hover:underline dark:text-blue-400">
-            ← Back to app
-          </Link>
         </p>
-      </div>
     </div>
   );
 }
