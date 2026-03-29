@@ -47,6 +47,20 @@ func (mr *MockServiceMockRecorder) ClearCancelRequested(userName interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCancelRequested", reflect.TypeOf((*MockService)(nil).ClearCancelRequested), userName)
 }
 
+// DeleteByUserName mocks base method.
+func (m *MockService) DeleteByUserName(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "DeleteByUserName", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// DeleteByUserName indicates an expected call of DeleteByUserName.
+func (mr *MockServiceMockRecorder) DeleteByUserName(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "DeleteByUserName", reflect.TypeOf((*MockService)(nil).DeleteByUserName), userName)
+}
+
 // GetEnabledPresets mocks base method.
 func (m *MockService) GetEnabledPresets() ([]Preset, error) {
 	m.ctrl.T.Helper()

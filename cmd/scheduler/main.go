@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"errors"
 	"fmt"
 	"strings"
 	"sync"
@@ -18,6 +19,10 @@ import (
 	"github.com/waisuan/alfred/internal/slotutil"
 	"github.com/waisuan/alfred/migrations"
 )
+
+// errRunCancelled is returned by processPreset when the user cancels from the app.
+// It is not a failure for logging purposes but must not be counted as a booking success.
+var errRunCancelled = errors.New("run cancelled by user")
 
 func sleepUntilBookingOpen(cfg *deps.Config) {
 	h, mi, minH := cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy, cfg.SchedulerBookingWaitMinHourMy
@@ -88,7 +93,7 @@ func run(d *deps.Dependencies) error {
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
 	var wg sync.WaitGroup
 	var mu sync.Mutex
-	var succeeded, failed int
+	var succeeded, failed, cancelled int
 
 	for _, p := range presets {
 		wg.Add(1)
@@ -104,10 +109,17 @@ func run(d *deps.Dependencies) error {
 				logger.String("retry_interval", p.RetryInterval),
 				logger.String("timeout", p.Timeout))
 			if err := processPreset(d, p); err != nil {
-				logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
-				mu.Lock()
-				failed++
-				mu.Unlock()
+				if errors.Is(err, errRunCancelled) {
+					mu.Lock()
+					cancelled++
+					mu.Unlock()
+					logger.Info("preset run cancelled", logger.String("user", p.UserName))
+				} else {
+					logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
+					mu.Lock()
+					failed++
+					mu.Unlock()
+				}
 			} else {
 				mu.Lock()
 				succeeded++
@@ -121,6 +133,7 @@ func run(d *deps.Dependencies) error {
 		logger.Int("total", len(presets)),
 		logger.Int("succeeded", succeeded),
 		logger.Int("failed", failed),
+		logger.Int("cancelled", cancelled),
 		logger.Duration("took", time.Since(start).Round(time.Millisecond)))
 	return nil
 }
@@ -243,7 +256,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		if result.Status == runner.StatusCancelled {
 			notifyUser(d.Notify, p, "CANCELLED: Run cancelled from the app.")
 			updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, result.Message)
-			return nil
+			return errRunCancelled
 		}
 		notifyUser(d.Notify, p, "FAILED: "+err.Error())
 		updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), err.Error())

@@ -25,11 +25,23 @@ func New(d *deps.Dependencies) http.Handler {
 	authHandler := &handlers.AuthHandler{Credentials: d.Credentials, Store: d.Store, EncryptionKey: d.Config.EncryptionKey}
 	r.HandleFunc("/api/v1/auth/login", authHandler.Login).Methods(http.MethodPost)
 
-	adminHandler := &handlers.AdminHandler{Config: d.Config, Booker: d.Booker, Credentials: d.Credentials}
-	r.HandleFunc("/api/v1/admin/register", adminHandler.Register).Methods(http.MethodPost)
-
 	api := r.PathPrefix("/api/v1/").Subrouter()
-	api.Use(middlewares.SessionAuth(d.Store))
+	api.Use(middlewares.SessionAuth(d.Store, d.Credentials))
+
+	adminHandler := &handlers.AdminHandler{
+		Config:      d.Config,
+		Booker:      d.Booker,
+		Credentials: d.Credentials,
+		Preset:      d.Preset,
+		PG:          d.PG,
+	}
+	admin := api.PathPrefix("/admin").Subrouter()
+	admin.Use(middlewares.RequireAdmin)
+	admin.HandleFunc("/register", adminHandler.Register).Methods(http.MethodPost)
+	admin.HandleFunc("/users", adminHandler.ListUsers).Methods(http.MethodGet)
+	admin.HandleFunc("/users/{username}/role", adminHandler.SetUserRole).Methods(http.MethodPut)
+	admin.HandleFunc("/users/{username}", adminHandler.DeleteUser).Methods(http.MethodDelete)
+	admin.HandleFunc("/presets/{username}", adminHandler.DeletePreset).Methods(http.MethodDelete)
 
 	api.HandleFunc("/auth/logout", authHandler.Logout).Methods(http.MethodPost)
 	api.HandleFunc("/auth/me", authHandler.Me).Methods(http.MethodGet)

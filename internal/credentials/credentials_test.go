@@ -10,6 +10,7 @@ import (
 	"github.com/testcontainers/testcontainers-go"
 	"github.com/testcontainers/testcontainers-go/modules/postgres"
 
+	appctx "github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/credentials"
 	"github.com/waisuan/alfred/internal/deps"
 	migrations "github.com/waisuan/alfred/migrations"
@@ -64,7 +65,7 @@ func (s *ServiceSuite) TearDownTest() {
 }
 
 func (s *ServiceSuite) TestUpsert_Insert_And_Get() {
-	err := s.svc.Upsert("alice", "encrypted-pw")
+	err := s.svc.Upsert("alice", "encrypted-pw", appctx.RoleNonAdmin)
 	s.Require().NoError(err)
 
 	c, err := s.svc.Get("alice")
@@ -72,19 +73,21 @@ func (s *ServiceSuite) TestUpsert_Insert_And_Get() {
 	s.Require().NotNil(c)
 	s.Assert().Equal("alice", c.UserName)
 	s.Assert().Equal("encrypted-pw", c.PasswordEnc)
+	s.Assert().Equal(appctx.RoleNonAdmin, c.Role)
 }
 
 func (s *ServiceSuite) TestUpsert_Update() {
-	err := s.svc.Upsert("bob", "v1")
+	err := s.svc.Upsert("bob", "v1", appctx.RoleAdmin)
 	s.Require().NoError(err)
 
-	err = s.svc.Upsert("bob", "v2")
+	err = s.svc.Upsert("bob", "v2", appctx.RoleNonAdmin)
 	s.Require().NoError(err)
 
 	c, err := s.svc.Get("bob")
 	s.Require().NoError(err)
 	s.Require().NotNil(c)
 	s.Assert().Equal("v2", c.PasswordEnc)
+	s.Assert().Equal(appctx.RoleAdmin, c.Role)
 }
 
 func (s *ServiceSuite) TestGet_NotFound() {
@@ -94,9 +97,9 @@ func (s *ServiceSuite) TestGet_NotFound() {
 }
 
 func (s *ServiceSuite) TestGet_MultipleUsers() {
-	err := s.svc.Upsert("user1", "pw1")
+	err := s.svc.Upsert("user1", "pw1", appctx.RoleNonAdmin)
 	s.Require().NoError(err)
-	err = s.svc.Upsert("user2", "pw2")
+	err = s.svc.Upsert("user2", "pw2", appctx.RoleNonAdmin)
 	s.Require().NoError(err)
 
 	c1, err := s.svc.Get("user1")

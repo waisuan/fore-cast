@@ -13,4 +13,20 @@ export const API_ENDPOINTS = {
   preset: '/api/v1/preset',
   presetCancel: '/api/v1/preset/cancel',
   adminRegister: '/api/v1/admin/register',
+  adminUsers: '/api/v1/admin/users',
 } as const;
+
+/** Path for DELETE /api/v1/admin/users/{username} */
+export function adminDeleteUserPath(username: string) {
+  return `/api/v1/admin/users/${encodeURIComponent(username)}`;
+}
+
+/** Path for PUT /api/v1/admin/users/{username}/role */
+export function adminUserRolePath(username: string) {
+  return `/api/v1/admin/users/${encodeURIComponent(username)}/role`;
+}
+
+/** Path for DELETE /api/v1/admin/presets/{username} */
+export function adminDeletePresetPath(username: string) {
+  return `/api/v1/admin/presets/${encodeURIComponent(username)}`;
+}

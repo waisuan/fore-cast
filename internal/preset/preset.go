@@ -9,6 +9,9 @@ import (
 // ErrCancelNotRunning is returned when cancel is requested but the preset is not in a running state.
 var ErrCancelNotRunning = errors.New("scheduler is not running for this account")
 
+// ErrPresetNotFound is returned when deleting a preset that does not exist.
+var ErrPresetNotFound = errors.New("preset not found")
+
 const (
 	DefaultCutoff        = "8:15"
 	DefaultRetryInterval = "1s"
@@ -29,6 +32,7 @@ type Service interface {
 	UpdatePresetRunStatus(userName string, status RunStatus, message string) error
 	RequestCancelRun(userName string) error
 	ClearCancelRequested(userName string) error
+	DeleteByUserName(userName string) error
 }
 
 type service struct {
@@ -152,4 +156,19 @@ func (s *service) ClearCancelRequested(userName string) error {
 		WHERE user_name = $1`,
 		userName)
 	return err
+}
+
+func (s *service) DeleteByUserName(userName string) error {
+	res, err := s.conn.Exec(`DELETE FROM booking_presets WHERE user_name = $1`, userName)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrPresetNotFound
+	}
+	return nil
 }

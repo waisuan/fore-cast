@@ -28,11 +28,13 @@ type LoginRequest struct {
 type LoginResponse struct {
 	User struct {
 		Username string `json:"username"`
+		Role     string `json:"role"`
 	} `json:"user"`
 }
 
 // Login handles POST /api/v1/auth/login. Validates credentials against stored
-// preset (no 3rd party call). Users must be registered first via /admin/register.
+// credentials (no 3rd party call). New accounts are created by an ADMIN via
+// POST /api/v1/admin/register (session cookie). Role is returned in /auth/me.
 func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	if r.Method != http.MethodPost {
 		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
@@ -87,7 +89,8 @@ func (h *AuthHandler) Login(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(LoginResponse{
 		User: struct {
 			Username string `json:"username"`
-		}{Username: req.Username},
+			Role     string `json:"role"`
+		}{Username: req.Username, Role: c.Role},
 	})
 }
 
@@ -118,6 +121,7 @@ func (h *AuthHandler) Me(w http.ResponseWriter, r *http.Request) {
 	_ = json.NewEncoder(w).Encode(LoginResponse{
 		User: struct {
 			Username string `json:"username"`
-		}{Username: u.UserName},
+			Role     string `json:"role"`
+		}{Username: u.UserName, Role: u.Role},
 	})
 }

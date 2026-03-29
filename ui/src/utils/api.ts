@@ -63,17 +63,12 @@ export const api = {
       method: 'POST',
       body: body != null ? JSON.stringify(body) : undefined,
     }),
-  postWithHeaders: <T>(path: string, body: unknown, headers: Record<string, string>) =>
-    request<T>(path, {
-      method: 'POST',
-      body: body != null ? JSON.stringify(body) : undefined,
-      headers,
-    }),
   put: <T>(path: string, body?: unknown) =>
     request<T>(path, {
       method: 'PUT',
       body: body != null ? JSON.stringify(body) : undefined,
     }),
+  delete: <T>(path: string) => request<T>(path, { method: 'DELETE' }),
 };
 
 export { API_ENDPOINTS };

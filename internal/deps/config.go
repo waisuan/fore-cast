@@ -30,10 +30,6 @@ type Config struct {
 	// Encryption (for stored credentials)
 	EncryptionKey string `env:"ENCRYPTION_KEY"`
 
-	// Admin (for admin-only registration)
-	AdminUser     string `env:"ADMIN_USER"`
-	AdminPassword string `env:"ADMIN_PASSWORD"`
-
 	// HTTP client timeouts (for outbound calls)
 	BookerHTTPTimeout time.Duration `env:"BOOKER_HTTP_TIMEOUT" envDefault:"30s"`
 	NotifyHTTPTimeout time.Duration `env:"NOTIFY_HTTP_TIMEOUT" envDefault:"10s"`

@@ -32,6 +32,7 @@ type sessionAuthSuite struct {
 	container *postgres.PostgresContainer
 	conn      *sql.DB
 	store     *session.Store
+	creds     credentials.Service
 	ctx       context.Context
 }
 
@@ -57,6 +58,7 @@ func (s *sessionAuthSuite) SetupSuite() {
 	s.conn = conn
 
 	s.store = session.NewStore(s.conn, time.Hour)
+	s.creds = credentials.NewService(s.conn)
 }
 
 func (s *sessionAuthSuite) TearDownSuite() {
@@ -75,6 +77,7 @@ func (s *sessionAuthSuite) TearDownSuite() {
 
 func (s *sessionAuthSuite) TearDownTest() {
 	_, _ = s.conn.Exec("DELETE FROM user_sessions")
+	_, _ = s.conn.Exec("DELETE FROM user_credentials")
 }
 
 func echoUser(w http.ResponseWriter, r *http.Request) {
@@ -84,13 +87,17 @@ func echoUser(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	w.WriteHeader(http.StatusOK)
-	_, _ = w.Write([]byte(u.UserName + ":" + u.APIToken))
+	_, _ = w.Write([]byte(u.UserName + ":" + u.Role + ":" + u.APIToken))
 }
 
 func (s *sessionAuthSuite) TestSessionAuth_ValidSession() {
+	_, err := s.conn.Exec(
+		`INSERT INTO user_credentials (user_name, password_enc, role) VALUES ('alice', 'x', 'NON_ADMIN')`,
+	)
+	s.Require().NoError(err)
 	sid, err := s.store.Create("alice")
 	s.Require().NoError(err)
-	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(s.store, s.creds)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
@@ -98,11 +105,11 @@ func (s *sessionAuthSuite) TestSessionAuth_ValidSession() {
 	handler.ServeHTTP(rec, req)
 
 	s.Assert().Equal(http.StatusOK, rec.Code)
-	s.Assert().Equal("alice:", rec.Body.String())
+	s.Assert().Equal("alice:NON_ADMIN:", rec.Body.String())
 }
 
 func (s *sessionAuthSuite) TestSessionAuth_NoCookie() {
-	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(s.store, s.creds)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
@@ -112,7 +119,7 @@ func (s *sessionAuthSuite) TestSessionAuth_NoCookie() {
 }
 
 func (s *sessionAuthSuite) TestSessionAuth_EmptyCookieValue() {
-	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(s.store, s.creds)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: ""})
@@ -123,7 +130,7 @@ func (s *sessionAuthSuite) TestSessionAuth_EmptyCookieValue() {
 }
 
 func (s *sessionAuthSuite) TestSessionAuth_UnknownSessionID() {
-	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(s.store, s.creds)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: "nonexistent"})
@@ -134,6 +141,10 @@ func (s *sessionAuthSuite) TestSessionAuth_UnknownSessionID() {
 }
 
 func (s *sessionAuthSuite) TestSessionAuth_ExpiredSession() {
+	_, err := s.conn.Exec(
+		`INSERT INTO user_credentials (user_name, password_enc, role) VALUES ('bob', 'x', 'NON_ADMIN')`,
+	)
+	s.Require().NoError(err)
 	shortStore := session.NewStore(s.conn, time.Millisecond)
 	defer shortStore.Close()
 
@@ -142,7 +153,7 @@ func (s *sessionAuthSuite) TestSessionAuth_ExpiredSession() {
 
 	time.Sleep(5 * time.Millisecond)
 
-	handler := middlewares.SessionAuth(shortStore)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(shortStore, s.creds)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
@@ -165,12 +176,16 @@ func (s *sessionAuthSuite) TestTokenRefresh_ObtainsTokenFromCredentials() {
 	mockCreds := credentials.NewMockService(ctrl)
 	mockCreds.EXPECT().
 		Get("alice").
-		Return(&credentials.Credential{UserName: "alice", PasswordEnc: enc}, nil)
+		Return(&credentials.Credential{UserName: "alice", PasswordEnc: enc, Role: appctx.RoleNonAdmin}, nil)
 
+	_, err = s.conn.Exec(
+		`INSERT INTO user_credentials (user_name, password_enc, role) VALUES ('alice', 'x', 'NON_ADMIN')`,
+	)
+	s.Require().NoError(err)
 	sid, err := s.store.Create("alice")
 	s.Require().NoError(err)
 
-	chain := middlewares.SessionAuth(s.store)(
+	chain := middlewares.SessionAuth(s.store, s.creds)(
 		middlewares.TokenRefresh(mockBooker, mockCreds, tokenRefreshEncKey)(http.HandlerFunc(echoUser)),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
@@ -179,7 +194,7 @@ func (s *sessionAuthSuite) TestTokenRefresh_ObtainsTokenFromCredentials() {
 	chain.ServeHTTP(rec, req)
 
 	s.Assert().Equal(http.StatusOK, rec.Code)
-	s.Assert().Equal("alice:fresh-token", rec.Body.String())
+	s.Assert().Equal("alice:NON_ADMIN:fresh-token", rec.Body.String())
 }
 
 func TestSessionAuthSuite(t *testing.T) {

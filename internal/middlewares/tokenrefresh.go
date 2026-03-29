@@ -40,6 +40,7 @@ func TokenRefresh(booker booker.ClientInterface, creds credentials.Service, encK
 			}
 			ctx := context.WithUser(r.Context(), &context.User{
 				UserName: u.UserName,
+				Role:     u.Role,
 				APIToken: token,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))

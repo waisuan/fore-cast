@@ -5,8 +5,6 @@ import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 
 export default function AdminRegisterPage() {
-  const [adminUser, setAdminUser] = useState('');
-  const [adminPassword, setAdminPassword] = useState('');
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
@@ -17,18 +15,13 @@ export default function AdminRegisterPage() {
     e.preventDefault();
     setError('');
     setSuccess('');
-    if (!adminUser || !adminPassword || !username || !password) {
-      setError('All fields are required');
+    if (!username || !password) {
+      setError('Club member ID and password are required');
       return;
     }
     setSubmitting(true);
     try {
-      const basic = btoa(`${adminUser}:${adminPassword}`);
-      await api.postWithHeaders(
-        API_ENDPOINTS.adminRegister,
-        { username, password },
-        { Authorization: `Basic ${basic}` },
-      );
+      await api.post(API_ENDPOINTS.adminRegister, { username, password });
       setSuccess(`Registered ${username}. They can now log in and configure their preset.`);
       setUsername('');
       setPassword('');
@@ -46,31 +39,10 @@ export default function AdminRegisterPage() {
           Admin: Register user
         </h1>
         <form onSubmit={handleSubmit} className="space-y-4">
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">
-              Admin credentials
-            </legend>
-            <input
-              type="text"
-              value={adminUser}
-              onChange={(e) => setAdminUser(e.target.value)}
-              placeholder="Admin username"
-              className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              autoComplete="username"
-            />
-            <input
-              type="password"
-              value={adminPassword}
-              onChange={(e) => setAdminPassword(e.target.value)}
-              placeholder="Admin password"
-              className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-              autoComplete="current-password"
-            />
-          </fieldset>
-          <fieldset className="space-y-2">
-            <legend className="text-sm font-medium text-gray-700 dark:text-gray-300">
+          <div className="space-y-2">
+            <p className="text-sm font-medium text-gray-700 dark:text-gray-300">
               New user (3rd party credentials)
-            </legend>
+            </p>
             <p className="text-xs text-gray-500 dark:text-gray-400">
               Must match exactly what the user uses for the club&apos;s booking system.
             </p>
@@ -90,7 +62,7 @@ export default function AdminRegisterPage() {
               className="w-full rounded border border-gray-300 px-3 py-2 text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
               autoComplete="new-password"
             />
-          </fieldset>
+          </div>
           {error && (
             <p role="alert" className="text-sm text-red-600 dark:text-red-400">
               {error}
@@ -108,11 +80,20 @@ export default function AdminRegisterPage() {
             {submitting ? 'Registering…' : 'Register'}
           </button>
         </form>
-        <p className="mt-4 text-center">
+        <p className="mt-4 space-y-2 text-center text-sm">
           <Link
-            href="/"
-            className="text-sm text-blue-600 hover:underline dark:text-blue-400"
+            href="/admin/users"
+            className="block text-blue-600 hover:underline dark:text-blue-400"
           >
+            View all users
+          </Link>
+          <Link
+            href="/admin/delete"
+            className="block text-blue-600 hover:underline dark:text-blue-400"
+          >
+            Remove user or preset
+          </Link>
+          <Link href="/" className="block text-blue-600 hover:underline dark:text-blue-400">
             ← Back to app
           </Link>
         </p>

@@ -10,8 +10,11 @@ import React, {
 } from 'react';
 import { api, ApiError, API_ENDPOINTS, setOnUnauthorized } from '@/utils/api';
 
+export type UserRole = 'ADMIN' | 'NON_ADMIN';
+
 interface AuthUser {
   username: string;
+  role: UserRole;
 }
 
 interface AuthContextType {
@@ -20,6 +23,7 @@ interface AuthContextType {
   login: (username: string, password: string) => Promise<{ success: boolean; error?: string }>;
   logout: () => Promise<void>;
   isAuthenticated: boolean;
+  isAdmin: boolean;
 }
 
 const AuthContext = createContext<AuthContextType | undefined>(undefined);
@@ -30,8 +34,11 @@ export function AuthProvider({ children }: { children: ReactNode }) {
 
   const loadUser = useCallback(async () => {
     try {
-      const data = await api.get<{ user: AuthUser }>(API_ENDPOINTS.me);
-      setUser(data.user);
+      const data = await api.get<{ user: { username: string; role: UserRole } }>(API_ENDPOINTS.me);
+      setUser({
+        username: data.user.username,
+        role: data.user.role,
+      });
     } catch {
       setUser(null);
     } finally {
@@ -51,11 +58,14 @@ export function AuthProvider({ children }: { children: ReactNode }) {
       password: string
     ): Promise<{ success: boolean; error?: string }> => {
       try {
-        const data = await api.post<{ user: AuthUser }>(API_ENDPOINTS.login, {
+        const data = await api.post<{ user: { username: string; role: UserRole } }>(API_ENDPOINTS.login, {
           username,
           password,
         });
-        setUser(data.user);
+        setUser({
+          username: data.user.username,
+          role: data.user.role,
+        });
         return { success: true };
       } catch (e) {
         const msg = e instanceof ApiError ? e.message : 'Login failed';
@@ -73,6 +83,8 @@ export function AuthProvider({ children }: { children: ReactNode }) {
     }
   }, []);
 
+  const isAdmin = user?.role === 'ADMIN';
+
   return (
     <AuthContext.Provider
       value={{
@@ -81,6 +93,7 @@ export function AuthProvider({ children }: { children: ReactNode }) {
         login,
         logout,
         isAuthenticated: user != null,
+        isAdmin,
       }}
     >
       {children}

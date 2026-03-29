@@ -49,15 +49,15 @@ func (mr *MockServiceMockRecorder) Get(userName interface{}) *gomock.Call {
 }
 
 // Upsert mocks base method.
-func (m *MockService) Upsert(userName, passwordEnc string) error {
+func (m *MockService) Upsert(userName, passwordEnc, role string) error {
 	m.ctrl.T.Helper()
-	ret := m.ctrl.Call(m, "Upsert", userName, passwordEnc)
+	ret := m.ctrl.Call(m, "Upsert", userName, passwordEnc, role)
 	ret0, _ := ret[0].(error)
 	return ret0
 }
 
 // Upsert indicates an expected call of Upsert.
-func (mr *MockServiceMockRecorder) Upsert(userName, passwordEnc interface{}) *gomock.Call {
+func (mr *MockServiceMockRecorder) Upsert(userName, passwordEnc, role interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
-	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockService)(nil).Upsert), userName, passwordEnc)
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "Upsert", reflect.TypeOf((*MockService)(nil).Upsert), userName, passwordEnc, role)
 }

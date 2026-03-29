@@ -93,7 +93,7 @@ func (s *AuthHandlerSuite) TestLogin_Success() {
 	s.Require().NoError(err)
 	s.mockCreds.EXPECT().
 		Get("alice").
-		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc}, nil)
+		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc, Role: appctx.RoleNonAdmin}, nil)
 
 	body, _ := json.Marshal(LoginRequest{Username: "alice", Password: "secret"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
@@ -117,6 +117,7 @@ func (s *AuthHandlerSuite) TestLogin_Success() {
 	var resp LoginResponse
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
 	s.Assert().Equal("alice", resp.User.Username)
+	s.Assert().Equal(appctx.RoleNonAdmin, resp.User.Role)
 }
 
 func (s *AuthHandlerSuite) TestLogin_MethodNotAllowed() {
@@ -161,7 +162,7 @@ func (s *AuthHandlerSuite) TestLogin_InvalidCredentials() {
 	s.Require().NoError(err)
 	s.mockCreds.EXPECT().
 		Get("alice").
-		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc}, nil)
+		Return(&credentials.Credential{UserName: "alice", PasswordEnc: passwordEnc, Role: appctx.RoleNonAdmin}, nil)
 
 	body, _ := json.Marshal(LoginRequest{Username: "alice", Password: "wrong"})
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/login", bytes.NewReader(body))
@@ -203,13 +204,14 @@ func (s *AuthHandlerSuite) TestMe_Unauthorized() {
 func (s *AuthHandlerSuite) TestMe_Success() {
 	s.handler = &AuthHandler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
-	req = req.WithContext(appctx.WithUser(req.Context(), &appctx.User{UserName: "bob", APIToken: "t"}))
+	req = req.WithContext(appctx.WithUser(req.Context(), &appctx.User{UserName: "bob", Role: appctx.RoleAdmin, APIToken: "t"}))
 	rec := httptest.NewRecorder()
 	s.handler.Me(rec, req)
 	s.Require().Equal(http.StatusOK, rec.Code)
 	var resp LoginResponse
 	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
 	s.Assert().Equal("bob", resp.User.Username)
+	s.Assert().Equal(appctx.RoleAdmin, resp.User.Role)
 }
 
 func TestAuthHandlerSuite(t *testing.T) {

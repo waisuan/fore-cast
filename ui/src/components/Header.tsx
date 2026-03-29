@@ -5,6 +5,12 @@ import Link from 'next/link';
 import { usePathname } from 'next/navigation';
 import { useAuth } from '@/contexts/AuthContext';
 
+const adminNavLinks = [
+  { href: '/admin/users', label: 'Users' },
+  { href: '/admin/register', label: 'Register user' },
+  { href: '/admin/delete', label: 'Remove user / preset' },
+] as const;
+
 const navLinks = [
   { href: '/', label: 'Home' },
   { href: '/slots', label: 'Slots' },
@@ -43,7 +49,7 @@ function NavLinks({
 }
 
 export default function Header() {
-  const { user, logout } = useAuth();
+  const { user, logout, isAdmin } = useAuth();
   const pathname = usePathname();
   const [loggingOut, setLoggingOut] = useState(false);
   const [mobileMenuOpen, setMobileMenuOpen] = useState(false);
@@ -71,6 +77,26 @@ export default function Header() {
             pathname={pathname}
             className="hidden items-center gap-4 sm:flex"
           />
+          {isAdmin && (
+            <nav className="hidden items-center gap-3 border-l border-gray-200 pl-4 dark:border-gray-600 sm:flex">
+              <span className="text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                Admin
+              </span>
+              {adminNavLinks.map((link) => (
+                <Link
+                  key={link.href}
+                  href={link.href}
+                  className={`text-sm ${
+                    pathname === link.href || pathname?.startsWith(link.href + '/')
+                      ? 'font-medium text-blue-600 dark:text-blue-400'
+                      : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                  }`}
+                >
+                  {link.label}
+                </Link>
+              ))}
+            </nav>
+          )}
         </div>
         <div className="flex items-center gap-4">
           <span className="hidden text-sm text-gray-600 dark:text-gray-400 sm:inline">
@@ -127,6 +153,29 @@ export default function Header() {
               className="flex flex-col gap-2"
               onLinkClick={() => setMobileMenuOpen(false)}
             />
+            {isAdmin && (
+              <div className="mt-2 border-t border-gray-200 pt-3 dark:border-gray-600">
+                <p className="mb-2 text-xs font-medium uppercase tracking-wide text-gray-500 dark:text-gray-400">
+                  Admin
+                </p>
+                <div className="flex flex-col gap-2">
+                  {adminNavLinks.map((link) => (
+                    <Link
+                      key={link.href}
+                      href={link.href}
+                      onClick={() => setMobileMenuOpen(false)}
+                      className={`text-sm ${
+                        pathname === link.href
+                          ? 'font-medium text-blue-600 dark:text-blue-400'
+                          : 'text-gray-600 hover:text-gray-900 dark:text-gray-400 dark:hover:text-white'
+                      }`}
+                    >
+                      {link.label}
+                    </Link>
+                  ))}
+                </div>
+              </div>
+            )}
           </div>
         </div>
       )}

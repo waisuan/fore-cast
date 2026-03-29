@@ -4,13 +4,14 @@ import (
 	"net/http"
 
 	"github.com/waisuan/alfred/internal/context"
+	"github.com/waisuan/alfred/internal/credentials"
 	"github.com/waisuan/alfred/internal/session"
 )
 
 const sessionCookieName = "session"
 
-// SessionAuth validates the session cookie and sets user in request context.
-func SessionAuth(store *session.Store) func(http.Handler) http.Handler {
+// SessionAuth validates the session cookie, loads role from user_credentials, and sets user in context.
+func SessionAuth(store *session.Store, creds credentials.Service) func(http.Handler) http.Handler {
 	return func(next http.Handler) http.Handler {
 		return http.HandlerFunc(func(w http.ResponseWriter, r *http.Request) {
 			cookie, err := r.Cookie(sessionCookieName)
@@ -23,8 +24,18 @@ func SessionAuth(store *session.Store) func(http.Handler) http.Handler {
 				http.Error(w, "unauthorized", http.StatusUnauthorized)
 				return
 			}
+			c, err := creds.Get(data.UserName)
+			if err != nil {
+				http.Error(w, "unauthorized", http.StatusInternalServerError)
+				return
+			}
+			if c == nil {
+				http.Error(w, "unauthorized", http.StatusUnauthorized)
+				return
+			}
 			ctx := context.WithUser(r.Context(), &context.User{
 				UserName: data.UserName,
+				Role:     c.Role,
 			})
 			next.ServeHTTP(w, r.WithContext(ctx))
 		})

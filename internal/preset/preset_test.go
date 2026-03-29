@@ -268,6 +268,48 @@ func TestRequestCancelRun(t *testing.T) {
 	assert.ErrorIs(t, err, preset.ErrCancelNotRunning)
 }
 
+func TestDeleteByUserName(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ctr, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("delpreset"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	require.NoError(t, err)
+	defer func() { _ = testcontainers.TerminateContainer(ctr) }()
+
+	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+
+	cfg := &deps.Config{DatabaseURL: connStr}
+	conn, err := deps.NewPostgresClient(cfg, migrations.FS)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	svc := preset.NewService(conn)
+
+	err = svc.DeleteByUserName("nope")
+	assert.ErrorIs(t, err, preset.ErrPresetNotFound)
+
+	_, err = conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "enc")
+	require.NoError(t, err)
+	err = svc.UpsertPreset(preset.Preset{
+		UserName: "alice", Cutoff: "8:15",
+		RetryInterval: "1s", Timeout: "10m", Enabled: false,
+	})
+	require.NoError(t, err)
+
+	require.NoError(t, svc.DeleteByUserName("alice"))
+
+	p, err := svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.Nil(t, p)
+}
+
 func TestServiceSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(ServiceSuite))
