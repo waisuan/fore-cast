@@ -62,7 +62,7 @@ func Initialise(migrationsFS fs.FS) (*Dependencies, error) {
 		History:     history.NewService(pg),
 		Booker:      bookerClient,
 		Notify:      notify.NewService(cfg.NtfyBaseURL, cfg.NotifyHTTPTimeout),
-		Store:       session.NewStore(cfg.SessionTTL),
+		Store:       session.NewStore(pg, cfg.SessionTTL),
 	}, nil
 }
 

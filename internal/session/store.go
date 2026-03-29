@@ -2,8 +2,8 @@ package session
 
 import (
 	"crypto/rand"
+	"database/sql"
 	"encoding/hex"
-	"sync"
 	"time"
 )
 
@@ -14,21 +14,21 @@ type Data struct {
 	ExpiresAt time.Time
 }
 
-// Store is an in-memory session store with TTL.
+// Store persists sessions in Postgres with TTL; expired rows are removed by a
+// background reaper and ignored on read.
 type Store struct {
-	mu       sync.RWMutex
-	sessions map[string]*Data
-	ttl      time.Duration
-	stop     chan struct{}
+	db   *sql.DB
+	ttl  time.Duration
+	stop chan struct{}
 }
 
-// NewStore returns a new session store with the given TTL. A background
-// goroutine evicts expired sessions every TTL/2 (min 1 minute).
-func NewStore(ttl time.Duration) *Store {
+// NewStore returns a new session store backed by Postgres with the given TTL.
+// A background goroutine deletes expired rows every TTL/2 (min 1 minute).
+func NewStore(db *sql.DB, ttl time.Duration) *Store {
 	s := &Store{
-		sessions: make(map[string]*Data),
-		ttl:      ttl,
-		stop:     make(chan struct{}),
+		db:   db,
+		ttl:  ttl,
+		stop: make(chan struct{}),
 	}
 	go s.reapLoop()
 	return s
@@ -53,20 +53,9 @@ func (s *Store) reapLoop() {
 	for {
 		select {
 		case <-ticker.C:
-			s.evictExpired()
+			_, _ = s.db.Exec(`DELETE FROM user_sessions WHERE expires_at < NOW()`)
 		case <-s.stop:
 			return
-		}
-	}
-}
-
-func (s *Store) evictExpired() {
-	now := time.Now()
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	for id, d := range s.sessions {
-		if now.After(d.ExpiresAt) {
-			delete(s.sessions, id)
 		}
 	}
 }
@@ -78,31 +67,34 @@ func (s *Store) Create(userName string) (string, error) {
 		return "", err
 	}
 	sid := hex.EncodeToString(id)
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	s.sessions[sid] = &Data{
-		UserName:  userName,
-		ExpiresAt: time.Now().Add(s.ttl),
+	expiresAt := time.Now().Add(s.ttl)
+	_, err := s.db.Exec(
+		`INSERT INTO user_sessions (id, user_name, expires_at) VALUES ($1, $2, $3)`,
+		sid, userName, expiresAt,
+	)
+	if err != nil {
+		return "", err
 	}
 	return sid, nil
 }
 
 // Get returns session data if the session exists and has not expired.
 func (s *Store) Get(sessionID string) *Data {
-	s.mu.RLock()
-	defer s.mu.RUnlock()
-	d := s.sessions[sessionID]
-	if d == nil || time.Now().After(d.ExpiresAt) {
+	var userName string
+	var expiresAt time.Time
+	err := s.db.QueryRow(
+		`SELECT user_name, expires_at FROM user_sessions WHERE id = $1 AND expires_at > NOW()`,
+		sessionID,
+	).Scan(&userName, &expiresAt)
+	if err != nil {
 		return nil
 	}
-	return d
+	return &Data{UserName: userName, ExpiresAt: expiresAt}
 }
 
 // Delete removes a session.
 func (s *Store) Delete(sessionID string) {
-	s.mu.Lock()
-	defer s.mu.Unlock()
-	delete(s.sessions, sessionID)
+	_, _ = s.db.Exec(`DELETE FROM user_sessions WHERE id = $1`, sessionID)
 }
 
 // TTL returns the session time-to-live.

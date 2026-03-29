@@ -2,7 +2,10 @@ package handlers
 
 import (
 	"bytes"
+	"context"
+	"database/sql"
 	"encoding/json"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -10,11 +13,16 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/suite"
-	"github.com/waisuan/alfred/internal/context"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
+	appctx "github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/credentials"
 	"github.com/waisuan/alfred/internal/crypto"
+	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/middlewares"
 	"github.com/waisuan/alfred/internal/session"
+	migrations "github.com/waisuan/alfred/migrations"
 )
 
 const testEncryptionKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
@@ -25,16 +33,58 @@ type AuthHandlerSuite struct {
 	mockCreds *credentials.MockService
 	store     *session.Store
 	handler   *AuthHandler
+
+	container *postgres.PostgresContainer
+	conn      *sql.DB
+	ctx       context.Context
+}
+
+func (s *AuthHandlerSuite) SetupSuite() {
+	s.ctx = context.Background()
+
+	ctr, err := postgres.Run(s.ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("forecasttest"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	s.Require().NoError(err)
+	s.container = ctr
+
+	connStr, err := ctr.ConnectionString(s.ctx, "sslmode=disable")
+	s.Require().NoError(err)
+
+	cfg := &deps.Config{DatabaseURL: connStr}
+	conn, err := deps.NewPostgresClient(cfg, migrations.FS)
+	s.Require().NoError(err)
+	s.conn = conn
+
+	s.store = session.NewStore(s.conn, 24*time.Hour)
+}
+
+func (s *AuthHandlerSuite) TearDownSuite() {
+	if s.store != nil {
+		s.store.Close()
+	}
+	if s.conn != nil {
+		_ = s.conn.Close()
+	}
+	if s.container != nil {
+		if err := testcontainers.TerminateContainer(s.container); err != nil {
+			log.Printf("failed to terminate container: %v", err)
+		}
+	}
 }
 
 func (s *AuthHandlerSuite) SetupTest() {
 	s.ctrl = gomock.NewController(s.T())
 	s.mockCreds = credentials.NewMockService(s.ctrl)
-	s.store = session.NewStore(24 * time.Hour)
 	s.handler = &AuthHandler{Credentials: s.mockCreds, Store: s.store, EncryptionKey: testEncryptionKey}
 }
 
 func (s *AuthHandlerSuite) TearDownTest() {
+	_, _ = s.conn.Exec("DELETE FROM user_sessions")
 	s.ctrl.Finish()
 }
 
@@ -124,7 +174,6 @@ func (s *AuthHandlerSuite) TestLogin_InvalidCredentials() {
 func (s *AuthHandlerSuite) TestLogout() {
 	sid, err := s.store.Create("user")
 	s.Require().NoError(err)
-	s.handler = &AuthHandler{Credentials: s.mockCreds, Store: s.store, EncryptionKey: testEncryptionKey}
 
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/auth/logout", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
@@ -154,7 +203,7 @@ func (s *AuthHandlerSuite) TestMe_Unauthorized() {
 func (s *AuthHandlerSuite) TestMe_Success() {
 	s.handler = &AuthHandler{}
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/auth/me", nil)
-	req = req.WithContext(context.WithUser(req.Context(), &context.User{UserName: "bob", APIToken: "t"}))
+	req = req.WithContext(appctx.WithUser(req.Context(), &appctx.User{UserName: "bob", APIToken: "t"}))
 	rec := httptest.NewRecorder()
 	s.handler.Me(rec, req)
 	s.Require().Equal(http.StatusOK, rec.Code)
@@ -164,6 +213,5 @@ func (s *AuthHandlerSuite) TestMe_Success() {
 }
 
 func TestAuthHandlerSuite(t *testing.T) {
-	t.Parallel()
 	suite.Run(t, new(AuthHandlerSuite))
 }

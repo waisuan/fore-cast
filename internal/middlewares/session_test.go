@@ -1,6 +1,9 @@
 package middlewares_test
 
 import (
+	"context"
+	"database/sql"
+	"log"
 	"net/http"
 	"net/http/httptest"
 	"testing"
@@ -8,25 +11,74 @@ import (
 
 	"github.com/golang/mock/gomock"
 	"github.com/stretchr/testify/assert"
-	"github.com/stretchr/testify/require"
+	"github.com/stretchr/testify/suite"
+	"github.com/testcontainers/testcontainers-go"
+	"github.com/testcontainers/testcontainers-go/modules/postgres"
+
 	"github.com/waisuan/alfred/internal/booker"
-	"github.com/waisuan/alfred/internal/context"
+	appctx "github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/credentials"
 	"github.com/waisuan/alfred/internal/crypto"
+	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/middlewares"
 	"github.com/waisuan/alfred/internal/session"
+	migrations "github.com/waisuan/alfred/migrations"
 )
 
-func newStoreWithSession(t *testing.T) (*session.Store, string) {
-	t.Helper()
-	store := session.NewStore(1 * time.Hour)
-	sid, err := store.Create("alice")
-	require.NoError(t, err)
-	return store, sid
+const tokenRefreshEncKey = "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
+
+type sessionAuthSuite struct {
+	suite.Suite
+	container *postgres.PostgresContainer
+	conn      *sql.DB
+	store     *session.Store
+	ctx       context.Context
+}
+
+func (s *sessionAuthSuite) SetupSuite() {
+	s.ctx = context.Background()
+
+	ctr, err := postgres.Run(s.ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("forecasttest"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	s.Require().NoError(err)
+	s.container = ctr
+
+	connStr, err := ctr.ConnectionString(s.ctx, "sslmode=disable")
+	s.Require().NoError(err)
+
+	cfg := &deps.Config{DatabaseURL: connStr}
+	conn, err := deps.NewPostgresClient(cfg, migrations.FS)
+	s.Require().NoError(err)
+	s.conn = conn
+
+	s.store = session.NewStore(s.conn, time.Hour)
+}
+
+func (s *sessionAuthSuite) TearDownSuite() {
+	if s.store != nil {
+		s.store.Close()
+	}
+	if s.conn != nil {
+		_ = s.conn.Close()
+	}
+	if s.container != nil {
+		if err := testcontainers.TerminateContainer(s.container); err != nil {
+			log.Printf("failed to terminate container: %v", err)
+		}
+	}
+}
+
+func (s *sessionAuthSuite) TearDownTest() {
+	_, _ = s.conn.Exec("DELETE FROM user_sessions")
 }
 
 func echoUser(w http.ResponseWriter, r *http.Request) {
-	u := context.UserFrom(r.Context())
+	u := appctx.UserFrom(r.Context())
 	if u == nil {
 		w.WriteHeader(http.StatusInternalServerError)
 		return
@@ -35,110 +87,106 @@ func echoUser(w http.ResponseWriter, r *http.Request) {
 	_, _ = w.Write([]byte(u.UserName + ":" + u.APIToken))
 }
 
-func TestSessionAuth_ValidSession(t *testing.T) {
-	t.Parallel()
-	store, sid := newStoreWithSession(t)
-	handler := middlewares.SessionAuth(store)(http.HandlerFunc(echoUser))
+func (s *sessionAuthSuite) TestSessionAuth_ValidSession() {
+	sid, err := s.store.Create("alice")
+	s.Require().NoError(err)
+	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "alice:", rec.Body.String())
+	s.Assert().Equal(http.StatusOK, rec.Code)
+	s.Assert().Equal("alice:", rec.Body.String())
 }
 
-func TestSessionAuth_NoCookie(t *testing.T) {
-	t.Parallel()
-	store := session.NewStore(1 * time.Hour)
-	handler := middlewares.SessionAuth(store)(http.HandlerFunc(echoUser))
+func (s *sessionAuthSuite) TestSessionAuth_NoCookie() {
+	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
 }
 
-func TestSessionAuth_EmptyCookieValue(t *testing.T) {
-	t.Parallel()
-	store := session.NewStore(1 * time.Hour)
-	handler := middlewares.SessionAuth(store)(http.HandlerFunc(echoUser))
+func (s *sessionAuthSuite) TestSessionAuth_EmptyCookieValue() {
+	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: ""})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
 }
 
-func TestSessionAuth_UnknownSessionID(t *testing.T) {
-	t.Parallel()
-	store := session.NewStore(1 * time.Hour)
-	handler := middlewares.SessionAuth(store)(http.HandlerFunc(echoUser))
+func (s *sessionAuthSuite) TestSessionAuth_UnknownSessionID() {
+	handler := middlewares.SessionAuth(s.store)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: "nonexistent"})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
 }
 
-func TestSessionAuth_ExpiredSession(t *testing.T) {
-	t.Parallel()
-	store := session.NewStore(1 * time.Millisecond)
-	sid, err := store.Create("bob")
-	require.NoError(t, err)
+func (s *sessionAuthSuite) TestSessionAuth_ExpiredSession() {
+	shortStore := session.NewStore(s.conn, time.Millisecond)
+	defer shortStore.Close()
+
+	sid, err := shortStore.Create("bob")
+	s.Require().NoError(err)
 
 	time.Sleep(5 * time.Millisecond)
 
-	handler := middlewares.SessionAuth(store)(http.HandlerFunc(echoUser))
+	handler := middlewares.SessionAuth(shortStore)(http.HandlerFunc(echoUser))
 
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
 	rec := httptest.NewRecorder()
 	handler.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusUnauthorized, rec.Code)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
 }
 
-func TestSessionCookieName(t *testing.T) {
-	t.Parallel()
-	assert.Equal(t, "session", middlewares.SessionCookieName())
-}
-
-func TestTokenRefresh_ObtainsTokenFromCredentials(t *testing.T) {
-	t.Parallel()
-	ctrl := gomock.NewController(t)
+func (s *sessionAuthSuite) TestTokenRefresh_ObtainsTokenFromCredentials() {
+	ctrl := gomock.NewController(s.T())
 	mockBooker := booker.NewMockClientInterface(ctrl)
 	mockBooker.EXPECT().
 		Login("alice", "pw123").
 		Return("fresh-token", nil)
 
-	encKey := "0123456789abcdef0123456789abcdef0123456789abcdef0123456789abcdef"
-	enc, err := crypto.Encrypt("pw123", encKey)
-	require.NoError(t, err)
+	enc, err := crypto.Encrypt("pw123", tokenRefreshEncKey)
+	s.Require().NoError(err)
 
 	mockCreds := credentials.NewMockService(ctrl)
 	mockCreds.EXPECT().
 		Get("alice").
 		Return(&credentials.Credential{UserName: "alice", PasswordEnc: enc}, nil)
 
-	store := session.NewStore(1 * time.Hour)
-	sid, err := store.Create("alice")
-	require.NoError(t, err)
+	sid, err := s.store.Create("alice")
+	s.Require().NoError(err)
 
-	chain := middlewares.SessionAuth(store)(
-		middlewares.TokenRefresh(mockBooker, mockCreds, encKey)(http.HandlerFunc(echoUser)),
+	chain := middlewares.SessionAuth(s.store)(
+		middlewares.TokenRefresh(mockBooker, mockCreds, tokenRefreshEncKey)(http.HandlerFunc(echoUser)),
 	)
 	req := httptest.NewRequest(http.MethodGet, "/", nil)
 	req.AddCookie(&http.Cookie{Name: middlewares.SessionCookieName(), Value: sid})
 	rec := httptest.NewRecorder()
 	chain.ServeHTTP(rec, req)
 
-	assert.Equal(t, http.StatusOK, rec.Code)
-	assert.Equal(t, "alice:fresh-token", rec.Body.String())
+	s.Assert().Equal(http.StatusOK, rec.Code)
+	s.Assert().Equal("alice:fresh-token", rec.Body.String())
+}
+
+func TestSessionAuthSuite(t *testing.T) {
+	suite.Run(t, new(sessionAuthSuite))
+}
+
+func TestSessionCookieName(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, "session", middlewares.SessionCookieName())
 }
