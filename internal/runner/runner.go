@@ -16,9 +16,10 @@ import (
 type Status string
 
 const (
-	StatusSuccess Status = "success"
-	StatusFailed  Status = "failed"
-	StatusNoSlots Status = "no_slots"
+	StatusSuccess   Status = "success"
+	StatusFailed    Status = "failed"
+	StatusNoSlots   Status = "no_slots"
+	StatusCancelled Status = "cancelled"
 )
 
 const flightAlreadyReservedPhrase = "The flight has already been reserved"
@@ -51,7 +52,9 @@ type Result struct {
 // Run fetches slots before the cutoff, then repeatedly walks them in order: CheckTeeTimeStatus,
 // then at most one BookTeeTime per slot (skipped when the check Reason indicates the flight is
 // already reserved). Sleeps RetryInterval only between full passes. Invalid token aborts immediately.
-func Run(cfg Config, client booker.ClientInterface) (Result, error) {
+// The caller should supply ctx with an appropriate deadline (or cancel) for repeat mode; cancellation
+// yields StatusCancelled.
+func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result, error) {
 	slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
 	if err != nil {
 		if errors.Is(err, booker.ErrInvalidToken) {
@@ -70,14 +73,6 @@ func Run(cfg Config, client booker.ClientInterface) (Result, error) {
 	}
 
 	repeatPasses := cfg.Timeout > 0
-	var ctx context.Context
-	var cancel context.CancelFunc
-	if repeatPasses {
-		ctx, cancel = context.WithTimeout(context.Background(), cfg.Timeout)
-	} else {
-		ctx, cancel = context.WithCancel(context.Background())
-	}
-	defer cancel()
 
 	for {
 		if repeatPasses {
@@ -127,7 +122,7 @@ func resultForDeadline(cfg Config, slots []booker.TeeTimeSlot, ctx context.Conte
 		r := Result{Status: StatusFailed, Message: "no slot booked"}
 		return r, fmt.Errorf("timeout after %s with no booking", cfg.Timeout)
 	}
-	r := Result{Status: StatusFailed, Message: "no slot booked"}
+	r := Result{Status: StatusCancelled, Message: "Run cancelled"}
 	return r, fmt.Errorf("booking cancelled: %w", ctx.Err())
 }
 

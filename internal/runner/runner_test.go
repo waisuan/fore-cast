@@ -1,6 +1,7 @@
 package runner
 
 import (
+	"context"
 	"fmt"
 	"strings"
 	"testing"
@@ -11,6 +12,16 @@ import (
 	"github.com/stretchr/testify/require"
 	"github.com/waisuan/alfred/internal/booker"
 )
+
+func testCtx(t testing.TB, cfg Config) context.Context {
+	t.Helper()
+	if cfg.Timeout > 0 {
+		ctx, cancel := context.WithTimeout(context.Background(), cfg.Timeout)
+		t.Cleanup(cancel)
+		return ctx
+	}
+	return context.Background()
+}
 
 func baseCfg(token string) Config {
 	return Config{
@@ -43,7 +54,7 @@ func TestRun_Success(t *testing.T) {
 		Result: []booker.BookingResultItem{{Status: true, BookingID: "B1"}},
 	}, nil)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B1", result.BookingID)
@@ -68,7 +79,7 @@ func TestRun_Success_0746SlotRunsCheckThenBook(t *testing.T) {
 		Result: []booker.BookingResultItem{{Status: true, BookingID: "B1"}},
 	}, nil)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B1", result.BookingID)
@@ -87,7 +98,7 @@ func TestRun_NoSlotsBeforeCutoff(t *testing.T) {
 	}
 	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusNoSlots, result.Status)
 	assert.Contains(t, err.Error(), "no slots available")
@@ -109,7 +120,7 @@ func TestRun_BookingFails_OnePass(t *testing.T) {
 	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
 	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{Status: false}, nil)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
 	assert.Contains(t, err.Error(), "no slots booked")
@@ -132,7 +143,7 @@ func TestRun_Timeout(t *testing.T) {
 	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil).AnyTimes()
 	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{Status: false}, nil).AnyTimes()
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
 	assert.Contains(t, err.Error(), "timeout")
@@ -148,7 +159,7 @@ func TestRun_GetSlotsError_NoRetry(t *testing.T) {
 
 	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(nil, assert.AnError)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
 }
@@ -165,7 +176,7 @@ func TestRun_InvalidToken_FailsFast(t *testing.T) {
 	errInvalid := fmt.Errorf("get tee time: %w", booker.ErrInvalidToken)
 	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(nil, errInvalid).Times(1)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
 	assert.Contains(t, result.Message, "session expired")
@@ -208,7 +219,7 @@ func TestRun_Retry_SucceedsAfterPasses(t *testing.T) {
 		},
 	).AnyTimes()
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B2", result.BookingID)
@@ -255,7 +266,7 @@ func TestRun_CheckTeeTimeStatusError_ThenBookSucceedsAcrossPasses(t *testing.T) 
 		},
 	).AnyTimes()
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B3", result.BookingID)
@@ -282,7 +293,7 @@ func TestRun_AllSlotsFlightAlreadyReserved_ExitsWithoutRetrySleep(t *testing.T) 
 	}, nil)
 
 	start := time.Now()
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	elapsed := time.Since(start)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
@@ -322,7 +333,7 @@ func TestRun_FlightAlreadyReserved_SkipsSlot_SecondSlotBooks(t *testing.T) {
 		},
 	).Times(1)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.Equal(t, "B-flight", result.BookingID)
@@ -346,8 +357,29 @@ func TestRun_InvalidToken_FromCheck_FailsFast(t *testing.T) {
 		Reason: "CODE103 - Invalid Token",
 	}, nil)
 
-	result, err := Run(cfg, mock)
+	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
 	assert.Contains(t, result.Message, "session expired")
+}
+
+func TestRun_AlreadyCancelled(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	ctx, cancel := context.WithCancel(context.Background())
+	cancel()
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+
+	result, err := Run(ctx, cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, StatusCancelled, result.Status)
+	assert.Contains(t, result.Message, "cancelled")
 }

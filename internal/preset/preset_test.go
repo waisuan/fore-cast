@@ -214,6 +214,60 @@ func TestUpdatePresetRunStatus(t *testing.T) {
 	assert.WithinDuration(t, time.Now(), p.LastRunAt.Time, 5*time.Second)
 }
 
+func TestRequestCancelRun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ctr, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("canceltest"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	require.NoError(t, err)
+	defer func() { _ = testcontainers.TerminateContainer(ctr) }()
+
+	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+
+	cfg := &deps.Config{DatabaseURL: connStr}
+	conn, err := deps.NewPostgresClient(cfg, migrations.FS)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	svc := preset.NewService(conn)
+
+	_, err = conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "enc")
+	require.NoError(t, err)
+
+	err = svc.UpsertPreset(preset.Preset{
+		UserName: "alice", Cutoff: "8:15",
+		RetryInterval: "1s", Timeout: "10m", Enabled: true,
+	})
+	require.NoError(t, err)
+
+	err = svc.UpdatePresetRunStatus("alice", preset.RunStatusRunning, "starting")
+	require.NoError(t, err)
+
+	err = svc.RequestCancelRun("alice")
+	require.NoError(t, err)
+	p, err := svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.True(t, p.CancelRequested)
+
+	err = svc.ClearCancelRequested("alice")
+	require.NoError(t, err)
+	p, err = svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.False(t, p.CancelRequested)
+
+	err = svc.UpdatePresetRunStatus("alice", preset.RunStatusIdle, "")
+	require.NoError(t, err)
+	err = svc.RequestCancelRun("alice")
+	assert.ErrorIs(t, err, preset.ErrCancelNotRunning)
+}
+
 func TestServiceSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(ServiceSuite))

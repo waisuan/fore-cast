@@ -1,0 +1,2 @@
+ALTER TABLE booking_presets
+    ADD COLUMN IF NOT EXISTS cancel_requested BOOLEAN NOT NULL DEFAULT FALSE;

@@ -50,6 +50,7 @@ func New(d *deps.Dependencies) http.Handler {
 	presetHandler := &handlers.PresetHandler{Service: d.Preset}
 	api.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
 	api.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
+	api.HandleFunc("/preset/cancel", presetHandler.CancelRun).Methods(http.MethodPost)
 
 	return r
 }

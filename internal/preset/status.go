@@ -4,8 +4,9 @@ package preset
 type RunStatus string
 
 const (
-	RunStatusIdle    RunStatus = "idle"
-	RunStatusRunning RunStatus = "running"
-	RunStatusSuccess RunStatus = "success"
-	RunStatusFailed  RunStatus = "failed"
+	RunStatusIdle      RunStatus = "idle"
+	RunStatusRunning   RunStatus = "running"
+	RunStatusSuccess   RunStatus = "success"
+	RunStatusFailed    RunStatus = "failed"
+	RunStatusCancelled RunStatus = "cancelled"
 )

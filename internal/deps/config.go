@@ -47,6 +47,8 @@ type Config struct {
 	// Scheduler
 	MaxConcurrentPresets int    `env:"MAX_CONCURRENT_PRESETS" envDefault:"5"`
 	SchedulerTxnDate     string `env:"SCHEDULER_TXN_DATE"` // override target date (YYYY/MM/DD); empty = 1 week ahead
+	// How often the scheduler process polls DB for cancel_requested (user-initiated cancel).
+	SchedulerCancelPollInterval time.Duration `env:"SCHEDULER_CANCEL_POLL_INTERVAL" envDefault:"2s"`
 
 	// Pre-booking idle (scheduler only, not dry-run): in SchedulerTimezone, if local hour >= SchedulerBookingWaitMinHourMy
 	// and time is before SchedulerBookingWaitHourMy:Minute, sleep until that instant before any Booker calls.

@@ -11,5 +11,6 @@ export const API_ENDPOINTS = {
   bookingBook: '/api/v1/booking/book',
   history: '/api/v1/history',
   preset: '/api/v1/preset',
+  presetCancel: '/api/v1/preset/cancel',
   adminRegister: '/api/v1/admin/register',
 } as const;

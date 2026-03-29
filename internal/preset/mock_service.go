@@ -33,6 +33,20 @@ func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
 }
 
+// ClearCancelRequested mocks base method.
+func (m *MockService) ClearCancelRequested(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearCancelRequested", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearCancelRequested indicates an expected call of ClearCancelRequested.
+func (mr *MockServiceMockRecorder) ClearCancelRequested(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCancelRequested", reflect.TypeOf((*MockService)(nil).ClearCancelRequested), userName)
+}
+
 // GetEnabledPresets mocks base method.
 func (m *MockService) GetEnabledPresets() ([]Preset, error) {
 	m.ctrl.T.Helper()
@@ -61,6 +75,20 @@ func (m *MockService) GetPreset(userName string) (*Preset, error) {
 func (mr *MockServiceMockRecorder) GetPreset(userName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "GetPreset", reflect.TypeOf((*MockService)(nil).GetPreset), userName)
+}
+
+// RequestCancelRun mocks base method.
+func (m *MockService) RequestCancelRun(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestCancelRun", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequestCancelRun indicates an expected call of RequestCancelRun.
+func (mr *MockServiceMockRecorder) RequestCancelRun(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestCancelRun", reflect.TypeOf((*MockService)(nil).RequestCancelRun), userName)
 }
 
 // UpdatePresetRunStatus mocks base method.

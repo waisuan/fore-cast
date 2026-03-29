@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"database/sql"
 	"fmt"
 	"strings"
@@ -128,6 +129,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	if err := d.Preset.UpdatePresetRunStatus(p.UserName, preset.RunStatusRunning, ""); err != nil {
 		logger.Warn("failed to set running status", logger.String("user", p.UserName), logger.Err(err))
 	}
+	defer func() { _ = d.Preset.ClearCancelRequested(p.UserName) }()
 
 	cred, err := d.Credentials.Get(p.UserName)
 	if err != nil {
@@ -196,11 +198,53 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		Timeout:       timeout,
 	}
 
+	var runCtx context.Context
+	var cancelRun context.CancelFunc
+	if timeout > 0 {
+		runCtx, cancelRun = context.WithTimeout(context.Background(), timeout)
+	} else {
+		runCtx, cancelRun = context.WithCancel(context.Background())
+	}
+	defer cancelRun()
+
+	stopPoll := make(chan struct{})
+	defer close(stopPoll)
+	pollEvery := d.Config.SchedulerCancelPollInterval
+	if pollEvery <= 0 {
+		pollEvery = 2 * time.Second
+	}
+	go func() {
+		ticker := time.NewTicker(pollEvery)
+		defer ticker.Stop()
+		for {
+			select {
+			case <-stopPoll:
+				return
+			case <-runCtx.Done():
+				return
+			case <-ticker.C:
+				cur, e := d.Preset.GetPreset(p.UserName)
+				if e != nil || cur == nil {
+					continue
+				}
+				if cur.CancelRequested {
+					cancelRun()
+					return
+				}
+			}
+		}
+	}()
+
 	logger.Info("starting run", logger.String("user", p.UserName), logger.String("course", courseID), logger.String("txn_date", txnDate))
-	result, err := runner.Run(cfg, d.Booker)
+	result, err := runner.Run(runCtx, cfg, d.Booker)
 	logAttempt(d.History, p, txnDate, result)
 
 	if err != nil {
+		if result.Status == runner.StatusCancelled {
+			notifyUser(d.Notify, p, "CANCELLED: Run cancelled from the app.")
+			updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, result.Message)
+			return nil
+		}
 		notifyUser(d.Notify, p, "FAILED: "+err.Error())
 		updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), err.Error())
 		return err
@@ -255,6 +299,8 @@ func runStatusFromResult(s runner.Status) preset.RunStatus {
 	switch s {
 	case runner.StatusSuccess:
 		return preset.RunStatusSuccess
+	case runner.StatusCancelled:
+		return preset.RunStatusCancelled
 	default:
 		return preset.RunStatusFailed
 	}

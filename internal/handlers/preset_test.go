@@ -364,6 +364,39 @@ func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {
 	s.Assert().Equal(http.StatusOK, rec.Code)
 }
 
+func (s *PresetHandlerSuite) TestCancelRun_Unauthorized() {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/cancel", nil)
+	rec := httptest.NewRecorder()
+	s.handler.CancelRun(rec, req)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestCancelRun_MethodNotAllowed() {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset/cancel", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.CancelRun(rec, req)
+	s.Assert().Equal(http.StatusMethodNotAllowed, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestCancelRun_Success() {
+	s.mockSvc.EXPECT().RequestCancelRun("u").Return(nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/cancel", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.CancelRun(rec, req)
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestCancelRun_NotRunning() {
+	s.mockSvc.EXPECT().RequestCancelRun("u").Return(preset.ErrCancelNotRunning)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/cancel", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.CancelRun(rec, req)
+	s.Assert().Equal(http.StatusConflict, rec.Code)
+}
+
 func TestPresetHandlerSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(PresetHandlerSuite))
