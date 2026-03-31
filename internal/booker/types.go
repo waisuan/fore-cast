@@ -28,6 +28,7 @@ const (
 	RequestTypeBooking            = "GolfNewBooking2"
 	RequestTypeGetBooking         = "GolfGetBooking"
 	RequestTypeCheckTeeTimeStatus = "GolfCheckTeeTimeStatus"
+	RequestTypeCancelBooking      = "GolfCancelBooking"
 )
 
 // --- Login ---
@@ -165,6 +166,22 @@ type GetBookingResponse struct {
 	Status bool                   `json:"Status"`
 	Reason string                 `json:"Reason"`
 	Result []GetBookingResultItem `json:"Result,omitempty"`
+}
+
+// --- Cancel booking ---
+type GolfCancelBookingRequest struct {
+	Type  string                 `json:"type"`
+	Input GolfCancelBookingInput `json:"Input"`
+}
+
+type GolfCancelBookingInput struct {
+	BookingID string `json:"BookingID"`
+	AccountID string `json:"AccountID"`
+}
+
+type GolfCancelBookingResponse struct {
+	Status bool   `json:"Status"`
+	Reason string `json:"Reason,omitempty"`
 }
 
 // --- Check tee time status ---

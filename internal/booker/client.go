@@ -20,6 +20,7 @@ type ClientInterface interface {
 	Login(userName, password string) (string, error)
 	GetTeeTimeSlots(token, courseID, txnDate string) ([]TeeTimeSlot, error)
 	GetBooking(token, accountID, bookingID, chitID string) (*GetBookingResponse, error)
+	CancelBooking(token, accountID, bookingID string) (*GolfCancelBookingResponse, error)
 	CheckTeeTimeStatus(token string, input GolfCheckTeeTimeStatusInput) (*CheckTeeTimeStatusResponse, error)
 	BookTeeTime(token string, input GolfNewBooking2Input, debug bool) (*BookingResponse, error)
 }
@@ -152,6 +153,23 @@ func (c *Client) GetBooking(token, accountID, bookingID, chitID string) (*GetBoo
 	var resp GetBookingResponse
 	if err := json.Unmarshal(raw, &resp); err != nil {
 		return nil, fmt.Errorf("parse get booking response: %w", err)
+	}
+	return &resp, nil
+}
+
+// CancelBooking sends GolfCancelBooking for the given booking and account.
+func (c *Client) CancelBooking(token, accountID, bookingID string) (*GolfCancelBookingResponse, error) {
+	req := GolfCancelBookingRequest{
+		Type:  RequestTypeCancelBooking,
+		Input: GolfCancelBookingInput{BookingID: bookingID, AccountID: accountID},
+	}
+	raw, err := c.do(req, token)
+	if err != nil {
+		return nil, fmt.Errorf("cancel booking: %w", err)
+	}
+	var resp GolfCancelBookingResponse
+	if err := json.Unmarshal(raw, &resp); err != nil {
+		return nil, fmt.Errorf("parse cancel booking response: %w", err)
 	}
 	return &resp, nil
 }

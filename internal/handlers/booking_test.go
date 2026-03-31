@@ -237,6 +237,65 @@ func (s *BookingHandlerSuite) TestBook_InvalidTokenFromBook() {
 	s.Assert().Contains(rec.Body.String(), "session expired")
 }
 
+func (s *BookingHandlerSuite) TestCancel_Success() {
+	s.mockBooker.EXPECT().
+		CancelBooking("token", "u", "BK1").
+		Return(&booker.GolfCancelBookingResponse{Status: true}, nil)
+
+	body, _ := json.Marshal(CancelRequest{BookingID: "BK1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/cancel", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Cancel(rec, req)
+
+	s.Require().Equal(http.StatusOK, rec.Code)
+	var out map[string]bool
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&out))
+	s.Assert().True(out["ok"])
+}
+
+func (s *BookingHandlerSuite) TestCancel_EmptyBookingID() {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/cancel", bytes.NewReader([]byte(`{"bookingID":""}`)))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Cancel(rec, req)
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *BookingHandlerSuite) TestCancel_UpstreamFailure() {
+	s.mockBooker.EXPECT().
+		CancelBooking("token", "u", "BK1").
+		Return(&booker.GolfCancelBookingResponse{Status: false, Reason: "not allowed"}, nil)
+
+	body, _ := json.Marshal(CancelRequest{BookingID: "BK1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/cancel", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Cancel(rec, req)
+
+	s.Assert().Equal(http.StatusConflict, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "not allowed")
+}
+
+func (s *BookingHandlerSuite) TestCancel_InvalidToken() {
+	s.mockBooker.EXPECT().
+		CancelBooking("token", "u", "BK1").
+		Return(&booker.GolfCancelBookingResponse{Status: false, Reason: "CODE103 - Invalid Token"}, nil)
+
+	body, _ := json.Marshal(CancelRequest{BookingID: "BK1"})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/cancel", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Cancel(rec, req)
+
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "session expired")
+}
+
 func TestBookingHandlerSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(BookingHandlerSuite))

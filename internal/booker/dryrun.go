@@ -62,6 +62,10 @@ func (c *DryRunClient) GetBooking(token, accountID, bookingID, chitID string) (*
 	return &GetBookingResponse{Status: true, Result: []GetBookingResultItem{}}, nil
 }
 
+func (c *DryRunClient) CancelBooking(token, accountID, bookingID string) (*GolfCancelBookingResponse, error) {
+	return &GolfCancelBookingResponse{Status: true}, nil
+}
+
 func (c *DryRunClient) CheckTeeTimeStatus(token string, input GolfCheckTeeTimeStatusInput) (*CheckTeeTimeStatusResponse, error) {
 	return &CheckTeeTimeStatusResponse{Status: true}, nil
 }

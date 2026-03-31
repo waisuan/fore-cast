@@ -66,6 +66,7 @@ func New(d *deps.Dependencies) http.Handler {
 	bookerAPI.HandleFunc("/booking", bookingHandler.GetBooking).Methods(http.MethodGet)
 	bookerAPI.HandleFunc("/booking/check-status", bookingHandler.CheckStatus).Methods(http.MethodPost)
 	bookerAPI.HandleFunc("/booking/book", bookingHandler.Book).Methods(http.MethodPost)
+	bookerAPI.HandleFunc("/booking/cancel", bookingHandler.Cancel).Methods(http.MethodPost)
 
 	return r
 }

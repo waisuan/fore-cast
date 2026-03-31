@@ -48,6 +48,21 @@ func (mr *MockClientInterfaceMockRecorder) BookTeeTime(token, input, debug inter
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "BookTeeTime", reflect.TypeOf((*MockClientInterface)(nil).BookTeeTime), token, input, debug)
 }
 
+// CancelBooking mocks base method.
+func (m *MockClientInterface) CancelBooking(token, accountID, bookingID string) (*GolfCancelBookingResponse, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "CancelBooking", token, accountID, bookingID)
+	ret0, _ := ret[0].(*GolfCancelBookingResponse)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// CancelBooking indicates an expected call of CancelBooking.
+func (mr *MockClientInterfaceMockRecorder) CancelBooking(token, accountID, bookingID interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "CancelBooking", reflect.TypeOf((*MockClientInterface)(nil).CancelBooking), token, accountID, bookingID)
+}
+
 // CheckTeeTimeStatus mocks base method.
 func (m *MockClientInterface) CheckTeeTimeStatus(token string, input GolfCheckTeeTimeStatusInput) (*CheckTeeTimeStatusResponse, error) {
 	m.ctrl.T.Helper()

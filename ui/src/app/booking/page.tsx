@@ -36,6 +36,7 @@ export default function BookingPage() {
   const [data, setData] = useState<BookingResponse | null>(null);
   const [loading, setLoading] = useState(true);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [deleteBookingId, setDeleteBookingId] = useState<string | null>(null);
 
   const loadPreset = useCallback(async () => {
     try {
@@ -70,6 +71,30 @@ export default function BookingPage() {
       setCancelLoading(false);
     }
   }, [addToast, loadPreset]);
+
+  const cancelBooking = useCallback(
+    async (b: BookingItem) => {
+      const when = `${formatDate(b.TxnDate)} · ${formatTime(b.TeeTime)} · ${b.CourseName}`;
+      if (
+        !window.confirm(
+          `Cancel booking ${b.BookingID}?\n\n${when}\n\nThis cannot be undone.`,
+        )
+      ) {
+        return;
+      }
+      setDeleteBookingId(b.BookingID);
+      try {
+        await api.post(API_ENDPOINTS.bookingCancel, { bookingID: b.BookingID });
+        addToast('Booking cancelled', 'success');
+        await load();
+      } catch (e) {
+        addToast(e instanceof ApiError ? e.message : 'Failed to cancel booking', 'error');
+      } finally {
+        setDeleteBookingId(null);
+      }
+    },
+    [addToast, load],
+  );
 
   useEffect(() => {
     loadPreset();
@@ -130,6 +155,16 @@ export default function BookingPage() {
                   <p className="text-sm text-gray-600 dark:text-gray-400">
                     Pax: {b.Pax} &middot; Holes: {b.Hole} &middot; {b.Name}
                   </p>
+                  <div className="mt-3">
+                    <button
+                      type="button"
+                      onClick={() => void cancelBooking(b)}
+                      disabled={deleteBookingId !== null}
+                      className="rounded border border-red-200 bg-white px-3 py-1.5 text-sm text-red-700 hover:bg-red-50 disabled:opacity-50 dark:border-red-900 dark:bg-gray-800 dark:text-red-400 dark:hover:bg-red-950/40"
+                    >
+                      {deleteBookingId === b.BookingID ? 'Cancelling…' : 'Cancel booking'}
+                    </button>
+                  </div>
                 </li>
               ))}
             </ul>

@@ -164,3 +164,49 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"bookingID": bookResp.Result[0].BookingID})
 }
+
+// CancelRequest is the body for POST /api/v1/booking/cancel.
+type CancelRequest struct {
+	BookingID string `json:"bookingID"`
+}
+
+// Cancel handles POST /api/v1/booking/cancel (GolfCancelBooking upstream).
+func (h *BookingHandler) Cancel(w http.ResponseWriter, r *http.Request) {
+	if r.Method != http.MethodPost {
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	u := context.UserFrom(r.Context())
+	if u == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	var req CancelRequest
+	if err := json.NewDecoder(r.Body).Decode(&req); err != nil {
+		http.Error(w, "invalid body", http.StatusBadRequest)
+		return
+	}
+	if req.BookingID == "" {
+		http.Error(w, "bookingID is required", http.StatusBadRequest)
+		return
+	}
+	resp, err := h.Booker.CancelBooking(u.APIToken, u.UserName, req.BookingID)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	if !resp.Status && booker.IsInvalidToken(resp.Reason) {
+		http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
+		return
+	}
+	if !resp.Status {
+		reason := resp.Reason
+		if reason == "" {
+			reason = "cancellation failed"
+		}
+		http.Error(w, reason, http.StatusConflict)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]bool{"ok": true})
+}
