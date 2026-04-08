@@ -1,11 +1,13 @@
 import { describe, expect, it } from 'vitest';
 import {
+  addCalendarDaysYmd,
   formatDate,
   formatDateTimeMY,
   formatDateTimeShortMY,
   formatTime,
   MY_TIMEZONE,
   todayIso,
+  todayIsoMalaysia,
   toApiDate,
 } from './date';
 
@@ -80,5 +82,26 @@ describe('MY_TIMEZONE', () => {
 describe('todayIso', () => {
   it('returns a YYYY-MM-DD string', () => {
     expect(todayIso()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('todayIsoMalaysia', () => {
+  it('returns a YYYY-MM-DD string', () => {
+    expect(todayIsoMalaysia()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('addCalendarDaysYmd', () => {
+  it('adds one day within a month', () => {
+    expect(addCalendarDaysYmd('2030-06-01', 1)).toBe('2030-06-02');
+  });
+
+  it('rolls month and year', () => {
+    expect(addCalendarDaysYmd('2030-01-31', 1)).toBe('2030-02-01');
+    expect(addCalendarDaysYmd('2024-02-28', 1)).toBe('2024-02-29');
+  });
+
+  it('returns original string for invalid input', () => {
+    expect(addCalendarDaysYmd('not-a-date', 1)).toBe('not-a-date');
   });
 });

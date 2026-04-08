@@ -38,6 +38,8 @@ make web
 make ui
 ```
 
+**UI only (mock API):** `make ui-mock` (or `cd ui && npm run dev:mock`) — see `ui/README.md`.
+
 ## Build
 
 ```bash

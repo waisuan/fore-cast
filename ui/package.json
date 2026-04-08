@@ -4,6 +4,8 @@
   "private": true,
   "scripts": {
     "dev": "next dev -p 3000 -H 0.0.0.0",
+    "dev:mock": "NEXT_PUBLIC_USE_MOCK_API=true next dev -p 3000 -H 0.0.0.0",
+    "dev:mock:admin": "NEXT_PUBLIC_USE_MOCK_API=true NEXT_PUBLIC_MOCK_ROLE=ADMIN next dev -p 3000 -H 0.0.0.0",
     "build": "next build",
     "start": "next start",
     "lint": "next lint",
@@ -17,6 +19,7 @@
   "dependencies": {
     "next": "15.5.9",
     "react": "^19.0.0",
+    "react-day-picker": "^9.14.0",
     "react-dom": "^19.0.0",
     "tailwindcss": "^4"
   },

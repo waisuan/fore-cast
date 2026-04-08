@@ -10,7 +10,7 @@ CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
 MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down bootstrap-admin ui ui-install ui-build ui-lint e2e e2e-install
+.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down bootstrap-admin ui ui-mock ui-mock-admin ui-install ui-build ui-lint e2e e2e-install
 build-web:
 	@mkdir -p bin
 	go build -o $(WEB_BINARY) $(CMD_WEB)
@@ -86,6 +86,14 @@ ui-install:
 # UI dev server: http://localhost:3000 (API backend should run on :8080, e.g. make web)
 ui:
 	cd ui && npm run dev
+
+# UI dev with mocked /api/v1 (no Go server). See ui/README.md
+ui-mock:
+	cd ui && npm run dev:mock
+
+# Same, mock user role ADMIN (admin shell at /admin/users)
+ui-mock-admin:
+	cd ui && npm run dev:mock:admin
 
 ui-build:
 	cd ui && npm run build

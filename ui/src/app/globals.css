@@ -22,3 +22,32 @@ body {
   color: var(--foreground);
   font-family: system-ui, sans-serif;
 }
+
+/* react-day-picker dark mode overrides */
+@media (prefers-color-scheme: dark) {
+  .date-picker-popover .rdp-root {
+    --rdp-accent-color: #3b82f6;
+    --rdp-accent-background-color: #1e3a5f;
+    --rdp-day-height: 2.5rem;
+    --rdp-day-width: 2.5rem;
+    color: #e5e7eb;
+  }
+  .date-picker-popover .rdp-chevron {
+    fill: #9ca3af;
+  }
+  .date-picker-popover .rdp-button_previous:hover,
+  .date-picker-popover .rdp-button_next:hover {
+    background-color: #374151;
+  }
+  .date-picker-popover .rdp-day:hover:not(.rdp-selected):not(.rdp-disabled) {
+    background-color: #374151;
+  }
+  .date-picker-popover .rdp-disabled {
+    color: #4b5563;
+  }
+  .date-picker-popover .rdp-dropdowns select {
+    background-color: #1f2937;
+    color: #e5e7eb;
+    border-color: #4b5563;
+  }
+}

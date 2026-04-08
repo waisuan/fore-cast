@@ -2,10 +2,11 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { toApiDate, formatTime, todayIso } from '@/utils/date';
+import { toApiDate, formatTime, todayIsoMalaysia } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 import SchedulerRunningBanner from '@/components/SchedulerRunningBanner';
+import DatePicker from '@/components/DatePicker';
 
 interface Slot {
   TeeTime: string;
@@ -129,42 +130,42 @@ export default function SlotsPage() {
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
       )}
       {!schedulerRunning && (
-        <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <label className="block sm:w-40">
-            <span className="mb-1 block text-sm text-gray-700 dark:text-gray-300">Date</span>
-            <input
+        <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:gap-4">
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor="date" className="text-sm font-medium text-gray-700 dark:text-gray-300">Date</label>
+            <DatePicker
               id="date"
-              type="date"
               value={date}
-              onChange={(e) => setDate(e.target.value)}
-              min={todayIso()}
-              className="min-h-11 w-full rounded border border-gray-300 px-3 py-2 text-base dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+              onChange={setDate}
+              min={todayIsoMalaysia()}
             />
-          </label>
-          <div>
-            <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+          </div>
+          <div className="flex min-w-0 flex-1 flex-col gap-1">
+            <label htmlFor="course" className="text-sm font-medium text-gray-700 dark:text-gray-300">
               Course
             </label>
             <select
               id="course"
               value={course}
               onChange={(e) => setCourse(e.target.value)}
-              className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-44"
+              className="min-h-12 w-full min-w-0 rounded border border-gray-300 bg-white px-3 py-2.5 text-base text-gray-900 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             >
               <option value="">Auto (default for day)</option>
               <option value="BRC">BRC</option>
               <option value="PLC">PLC</option>
             </select>
           </div>
-          <button
-            type="button"
-            onClick={loadSlots}
-            disabled={loading}
-            aria-busy={loading}
-            className="rounded bg-blue-600 px-4 py-2 font-medium text-white hover:bg-blue-700 disabled:opacity-50"
-          >
-            {loading ? <Spinner className="h-4 w-4 text-white" /> : 'Load slots'}
-          </button>
+          <div className="flex flex-col justify-end sm:shrink-0">
+            <button
+              type="button"
+              onClick={loadSlots}
+              disabled={loading}
+              aria-busy={loading}
+              className="min-h-12 w-full rounded bg-blue-600 px-4 py-2.5 font-medium text-white hover:bg-blue-700 disabled:opacity-50 sm:w-auto sm:min-w-[9.5rem]"
+            >
+              {loading ? <Spinner className="h-4 w-4 text-white" /> : 'Load slots'}
+            </button>
+          </div>
         </div>
       )}
       {!schedulerRunning && data && (

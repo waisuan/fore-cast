@@ -7,7 +7,7 @@ vi.mock('@/utils/date', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/utils/date')>();
   return {
     ...actual,
-    todayIso: () => '2030-06-01',
+    todayIsoMalaysia: () => '2030-06-01',
   };
 });
 
@@ -33,6 +33,29 @@ vi.mock('@/utils/api', () => ({
   },
 }));
 
+vi.mock('@/components/DatePicker', () => ({
+  default: ({
+    id,
+    value,
+    onChange,
+    min,
+  }: {
+    id?: string;
+    value: string;
+    onChange: (v: string) => void;
+    min?: string;
+  }) => (
+    <input
+      id={id}
+      data-testid="date-picker"
+      type="text"
+      value={value}
+      data-min={min}
+      onChange={(e) => onChange(e.target.value)}
+    />
+  ),
+}));
+
 import { api, ApiError } from '@/utils/api';
 
 function renderSlots() {
@@ -52,13 +75,19 @@ function mockPresetIdle() {
   });
 }
 
+function setDate(value: string) {
+  fireEvent.change(screen.getByTestId('date-picker'), {
+    target: { value },
+  });
+}
+
 describe('SlotsPage', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockPresetIdle();
   });
 
-  it('loads preset on mount and renders date field inside a label with min=todayIso', async () => {
+  it('renders DatePicker with min from todayIsoMalaysia', async () => {
     renderSlots();
 
     await waitFor(() => {
@@ -67,13 +96,9 @@ describe('SlotsPage', () => {
 
     expect(screen.getByRole('heading', { name: /available slots/i })).toBeInTheDocument();
 
-    const dateInput = document.querySelector('input[type="date"]') as HTMLInputElement | null;
-    expect(dateInput).toBeTruthy();
-    expect(dateInput?.min).toBe('2030-06-01');
-
-    const label = dateInput?.closest('label');
-    expect(label).toBeTruthy();
-    expect(label?.textContent).toContain('Date');
+    const picker = screen.getByTestId('date-picker');
+    expect(picker).toBeTruthy();
+    expect(picker.getAttribute('data-min')).toBe('2030-06-01');
   });
 
   it('shows scheduler banner and hides slot form when preset is running', async () => {
@@ -111,9 +136,7 @@ describe('SlotsPage', () => {
     renderSlots();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/preset'));
 
-    fireEvent.change(document.querySelector('#date')!, {
-      target: { value: '2030-06-15' },
-    });
+    setDate('2030-06-15');
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
     await waitFor(() => {
@@ -137,9 +160,7 @@ describe('SlotsPage', () => {
     renderSlots();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/preset'));
 
-    fireEvent.change(document.querySelector('#date')!, {
-      target: { value: '2030-08-01' },
-    });
+    setDate('2030-08-01');
     fireEvent.change(screen.getByLabelText(/course/i), { target: { value: 'PLC' } });
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
@@ -175,9 +196,7 @@ describe('SlotsPage', () => {
     renderSlots();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/preset'));
 
-    fireEvent.change(document.querySelector('#date')!, {
-      target: { value: '2030-12-20' },
-    });
+    setDate('2030-12-20');
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
     await waitFor(() => {
@@ -216,9 +235,7 @@ describe('SlotsPage', () => {
     renderSlots();
     await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/preset'));
 
-    fireEvent.change(document.querySelector('#date')!, {
-      target: { value: '2030-01-01' },
-    });
+    setDate('2030-01-01');
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
     await waitFor(() => {

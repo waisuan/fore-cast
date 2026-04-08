@@ -1,5 +1,5 @@
 import type { Page, Route } from '@playwright/test';
-import { mockPresetFull, mockSlotsResponse, mockUser } from './fixtures';
+import { mockPresetFull, mockSlotsResponse, mockUser } from '../src/mocks/api-fixtures';
 
 const json = (data: unknown) => ({
   status: 200,

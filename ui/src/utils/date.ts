@@ -2,11 +2,48 @@
 export const MY_TIMEZONE = 'Asia/Kuala_Lumpur';
 
 /**
- * Return today's date in YYYY-MM-DD format (local timezone).
+ * Return today's date in YYYY-MM-DD format (browser local timezone).
  */
 export function todayIso(): string {
   const d = new Date();
   return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
+}
+
+/**
+ * Today's calendar date as YYYY-MM-DD in {@link MY_TIMEZONE} (Malaysia).
+ * Use for slot booking windows and other rules tied to club local date, not the viewer's TZ.
+ */
+export function todayIsoMalaysia(): string {
+  const parts = new Intl.DateTimeFormat('en-US', {
+    timeZone: MY_TIMEZONE,
+    year: 'numeric',
+    month: '2-digit',
+    day: '2-digit',
+  }).formatToParts(new Date());
+  const y = parts.find((p) => p.type === 'year')?.value;
+  const m = parts.find((p) => p.type === 'month')?.value;
+  const d = parts.find((p) => p.type === 'day')?.value;
+  if (!y || !m || !d) {
+    return todayIso();
+  }
+  return `${y}-${m.padStart(2, '0')}-${d.padStart(2, '0')}`;
+}
+
+/**
+ * Add calendar days to a YYYY-MM-DD string (proleptic Gregorian).
+ * Matches Playwright and the slot `min` attribute when both use Malaysia calendar strings.
+ */
+export function addCalendarDaysYmd(ymd: string, deltaDays: number): string {
+  const seg = ymd.split('-').map(Number);
+  if (seg.length !== 3 || seg.some((n) => Number.isNaN(n))) {
+    return ymd;
+  }
+  const [y, m, d] = seg;
+  const dt = new Date(Date.UTC(y, m - 1, d + deltaDays));
+  const y2 = dt.getUTCFullYear();
+  const m2 = dt.getUTCMonth() + 1;
+  const d2 = dt.getUTCDate();
+  return `${y2}-${String(m2).padStart(2, '0')}-${String(d2).padStart(2, '0')}`;
 }
 
 /**
