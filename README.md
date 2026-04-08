@@ -120,3 +120,8 @@ make test          # run tests (db tests require Docker)
 make check         # fmt + lint + test
 make generate      # regenerate mocks
 ```
+
+## Testing
+
+- **Go:** `make test` (integration tests need Docker / Postgres as noted in [Prerequisites](#prerequisites)).
+- **Frontend:** Vitest + Playwright — see [ui/README.md](ui/README.md#testing).

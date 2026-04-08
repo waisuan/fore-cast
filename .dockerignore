@@ -1,7 +1,0 @@
-ui/node_modules
-ui/.next
-.git
-**/node_modules
-bin
-*.md
-tmp

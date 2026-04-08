@@ -1,4 +1,5 @@
 import type { Page, Route } from '@playwright/test';
+import { mockPresetFull, mockSlotsResponse, mockUser } from './fixtures';
 
 const json = (data: unknown) => ({
   status: 200,
@@ -26,7 +27,7 @@ export async function installApiMocks(
       if (state.authenticated) {
         return route.fulfill(
           json({
-            user: { username: 'e2euser', role: 'NON_ADMIN' },
+            user: mockUser('NON_ADMIN', 'e2euser'),
           }),
         );
       }
@@ -37,7 +38,7 @@ export async function installApiMocks(
       state.authenticated = true;
       return route.fulfill(
         json({
-          user: { username: 'e2euser', role: 'NON_ADMIN' },
+          user: mockUser('NON_ADMIN', 'e2euser'),
         }),
       );
     }
@@ -48,31 +49,11 @@ export async function installApiMocks(
     }
 
     if (path.endsWith('/preset') && method === 'GET') {
-      return route.fulfill(
-        json({
-          last_run_status: 'idle',
-          enabled: false,
-          last_run_message: '',
-          last_run_at: null,
-        }),
-      );
+      return route.fulfill(json(mockPresetFull()));
     }
 
     if (path.includes('/slots') && method === 'GET') {
-      return route.fulfill(
-        json({
-          course: 'PLC',
-          slots: [
-            {
-              TeeTime: '1899-12-30T07:30:00',
-              Session: 'Morning',
-              TeeBox: '1',
-              CourseID: 'PLC',
-              CourseName: 'PLC',
-            },
-          ],
-        }),
-      );
+      return route.fulfill(json(mockSlotsResponse));
     }
 
     return route.fulfill({
