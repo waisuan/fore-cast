@@ -10,7 +10,7 @@ CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
 MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down bootstrap-admin ui ui-install ui-build ui-lint
+.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down bootstrap-admin ui ui-install ui-build ui-lint e2e e2e-install
 build-web:
 	@mkdir -p bin
 	go build -o $(WEB_BINARY) $(CMD_WEB)
@@ -92,3 +92,10 @@ ui-build:
 
 ui-lint:
 	cd ui && npm run lint
+
+# E2E: Playwright + Next dev (mocked /api in tests). Starts dev server via playwright.config.
+e2e-install:
+	cd ui && npm run test:e2e:install
+
+e2e:
+	cd ui && npm run test:e2e

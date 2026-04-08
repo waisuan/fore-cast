@@ -130,19 +130,17 @@ export default function SlotsPage() {
       )}
       {!schedulerRunning && (
         <div className="flex flex-col gap-3 sm:flex-row sm:items-end">
-          <div>
-            <label htmlFor="date" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-              Date
-            </label>
+          <label className="block sm:w-40">
+            <span className="mb-1 block text-sm text-gray-700 dark:text-gray-300">Date</span>
             <input
               id="date"
               type="date"
               value={date}
               onChange={(e) => setDate(e.target.value)}
               min={todayIso()}
-              className="w-full rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white sm:w-40"
+              className="min-h-11 w-full rounded border border-gray-300 px-3 py-2 text-base dark:border-gray-600 dark:bg-gray-700 dark:text-white"
             />
-          </div>
+          </label>
           <div>
             <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
               Course

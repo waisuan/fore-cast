@@ -1,6 +1,14 @@
 'use client';
 
-import React, { createContext, useContext, useState, useCallback, useRef, ReactNode } from 'react';
+import {
+  createContext,
+  useContext,
+  useState,
+  useCallback,
+  useRef,
+  useEffect,
+  type ReactNode,
+} from 'react';
 
 type ToastType = 'success' | 'error' | 'info';
 
@@ -21,28 +29,53 @@ const ToastContext = createContext<ToastContextType | undefined>(undefined);
 export function ToastProvider({ children }: { children: ReactNode }) {
   const [toasts, setToasts] = useState<Toast[]>([]);
   const nextIdRef = useRef(0);
+  const timeoutByToastIdRef = useRef<Map<number, ReturnType<typeof setTimeout>>>(
+    new Map(),
+  );
+
+  useEffect(() => {
+    const timeoutsRef = timeoutByToastIdRef;
+    return () => {
+      const pending = timeoutsRef.current;
+      for (const t of pending.values()) {
+        clearTimeout(t);
+      }
+      pending.clear();
+    };
+  }, []);
 
   const addToast = useCallback((message: string, type: ToastType = 'info') => {
     const id = nextIdRef.current++;
     setToasts((prev) => [...prev, { id, message, type }]);
     const duration = type === 'error' ? 6000 : 4000;
-    setTimeout(() => {
+    const timeoutId = setTimeout(() => {
+      timeoutByToastIdRef.current.delete(id);
       setToasts((prev) => prev.filter((t) => t.id !== id));
     }, duration);
+    timeoutByToastIdRef.current.set(id, timeoutId);
   }, []);
 
   const dismissToast = useCallback((id: number) => {
+    const pending = timeoutByToastIdRef.current.get(id);
+    if (pending !== undefined) {
+      clearTimeout(pending);
+      timeoutByToastIdRef.current.delete(id);
+    }
     setToasts((prev) => prev.filter((t) => t.id !== id));
   }, []);
 
   return (
     <ToastContext.Provider value={{ toasts, addToast, dismissToast }}>
       {children}
-      <div role="status" aria-live="polite" className="fixed left-1/2 top-24 z-50 flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4">
+      <div
+        role="status"
+        aria-live="polite"
+        className="pointer-events-none fixed left-1/2 top-24 z-50 flex w-full max-w-sm -translate-x-1/2 flex-col gap-2 px-4"
+      >
         {toasts.map((t) => (
           <div
             key={t.id}
-            className={`relative flex items-start gap-2 rounded-lg px-4 py-3 pr-10 text-sm font-medium shadow-lg transition-opacity ${
+            className={`pointer-events-auto relative flex items-start gap-2 rounded-lg px-4 py-3 pr-10 text-sm font-medium shadow-lg transition-opacity ${
               t.type === 'success'
                 ? 'bg-green-600 text-white'
                 : t.type === 'error'
