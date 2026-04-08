@@ -13,7 +13,7 @@ interface DatePickerProps {
   placeholder?: string;
 }
 
-function parseYmd(ymd: string): Date | undefined {
+function parseYmd(ymd: string | undefined): Date | undefined {
   if (!ymd) return undefined;
   const [y, m, d] = ymd.split('-').map(Number);
   if (!y || !m || !d) return undefined;
