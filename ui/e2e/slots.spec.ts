@@ -15,10 +15,11 @@ test.describe('slots', () => {
     // Open the DatePicker calendar via the calendar icon button
     await page.locator('[aria-label="Open calendar"]').click();
 
-    // If tomorrow is in the next month, click the "next month" nav button
+    // If tomorrow is in the next month, click the "next month" chevron.
+    // react-day-picker v9 exposes nav buttons via aria-label, not `name`.
     const todayParts = todayIsoMalaysia().split('-').map(Number);
     if (m !== todayParts[1] || y !== todayParts[0]) {
-      await page.locator('button[name="next_month"]').click();
+      await page.getByRole('button', { name: /next month/i }).click();
     }
 
     // Click the day in the calendar grid
