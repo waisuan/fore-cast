@@ -1,17 +1,29 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { formatDateTimeMY } from '@/utils/date';
+import {
+  addCalendarDaysYmd,
+  courseForYmd,
+  formatDateTimeMY,
+  formatWeekdayDateMY,
+  nextSchedulerRunMY,
+  SCHEDULER_FIRE_HOUR_MY,
+  SCHEDULER_FIRE_LABEL_MY,
+  SCHEDULER_FIRE_MINUTE_MY,
+} from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import SchedulerRunningBanner from './SchedulerRunningBanner';
+import CourseOverrideBanner from './CourseOverrideBanner';
 
 interface PresetStatus {
   enabled: boolean;
   last_run_status: string;
   last_run_message: string;
   last_run_at: string | null;
+  override_course: string;
+  override_until: string | null;
 }
 
 export default function HomeContent() {
@@ -30,6 +42,8 @@ export default function HomeContent() {
           last_run_status: res.last_run_status ?? 'idle',
           last_run_message: res.last_run_message ?? '',
           last_run_at: res.last_run_at ?? null,
+          override_course: res.override_course ?? '',
+          override_until: res.override_until ?? null,
         });
       } catch (e) {
         setStatus(null);
@@ -58,7 +72,14 @@ export default function HomeContent() {
     load();
   }, [load]);
 
-  const { enabled, last_run_status, last_run_message, last_run_at } = status ?? {};
+  const {
+    enabled,
+    last_run_status,
+    last_run_message,
+    last_run_at,
+    override_course,
+    override_until,
+  } = status ?? {};
   const isRecent = last_run_at
     ? Date.now() - new Date(last_run_at).getTime() < 23 * 60 * 60 * 1000
     : false;
@@ -78,6 +99,25 @@ export default function HomeContent() {
 
   const schedulerRunning = last_run_status === 'running';
 
+  // Preview the next scheduled job: which day will be booked and on which
+  // course (override wins if it would still be active when the scheduler fires).
+  const upcoming = useMemo(() => {
+    if (!enabled || schedulerRunning) return null;
+    const next = nextSchedulerRunMY();
+    const bookingYmd = addCalendarDaysYmd(next.ymd, 7);
+    const fireHH = String(SCHEDULER_FIRE_HOUR_MY).padStart(2, '0');
+    const fireMM = String(SCHEDULER_FIRE_MINUTE_MY).padStart(2, '0');
+    const fireInstant = new Date(`${next.ymd}T${fireHH}:${fireMM}:00+08:00`).getTime();
+    const overrideAppliesToNextRun =
+      !!override_course && (!override_until || new Date(override_until).getTime() > fireInstant);
+    return {
+      bookingLabel: formatWeekdayDateMY(bookingYmd),
+      course: overrideAppliesToNextRun && override_course ? override_course : courseForYmd(bookingYmd),
+      whenLabel: next.tonight ? 'tonight' : 'tomorrow night',
+      isOverride: overrideAppliesToNextRun,
+    };
+  }, [enabled, schedulerRunning, override_course, override_until]);
+
   useEffect(() => {
     if (!schedulerRunning) return;
     const id = setInterval(() => {
@@ -93,6 +133,24 @@ export default function HomeContent() {
       </p>
       {schedulerRunning && (
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
+      {upcoming && (
+        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
+          <p>
+            Next auto-booking: <strong className="font-semibold">{upcoming.bookingLabel}</strong>{' '}
+            on <strong className="font-semibold">{upcoming.course}</strong>
+            {upcoming.isOverride && ' (override)'}.
+          </p>
+          <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
+            Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
+          </p>
+        </div>
+      )}
+      {enabled && override_course && (
+        <CourseOverrideBanner
+          overrideCourse={override_course}
+          overrideUntil={override_until ?? null}
+        />
       )}
       {showBanner && (
         <div
@@ -143,11 +201,6 @@ export default function HomeContent() {
           My bookings
         </Link>
       </nav>
-      {enabled && (
-        <p className="text-sm text-gray-500 dark:text-gray-400">
-          Scheduler runs daily at 9:55–10:00 PM (Malaysia).
-        </p>
-      )}
     </div>
   );
 }

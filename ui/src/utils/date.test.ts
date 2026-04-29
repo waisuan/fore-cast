@@ -1,11 +1,17 @@
 import { describe, expect, it } from 'vitest';
 import {
   addCalendarDaysYmd,
+  courseForYmd,
+  endOfDayMalaysiaIso,
   formatDate,
   formatDateTimeMY,
   formatDateTimeShortMY,
+  formatShortDateMY,
   formatTime,
+  formatWeekdayDateMY,
+  isoToYmdMalaysia,
   MY_TIMEZONE,
+  nextSchedulerRunMY,
   todayIso,
   todayIsoMalaysia,
   toApiDate,
@@ -88,6 +94,94 @@ describe('todayIso', () => {
 describe('todayIsoMalaysia', () => {
   it('returns a YYYY-MM-DD string', () => {
     expect(todayIsoMalaysia()).toMatch(/^\d{4}-\d{2}-\d{2}$/);
+  });
+});
+
+describe('endOfDayMalaysiaIso', () => {
+  it('pins to 23:59:59 +08:00 in Malaysia time', () => {
+    expect(endOfDayMalaysiaIso('2026-04-29')).toBe('2026-04-29T23:59:59+08:00');
+  });
+
+  it('returns empty string for invalid input', () => {
+    expect(endOfDayMalaysiaIso('not-a-date')).toBe('');
+    expect(endOfDayMalaysiaIso('')).toBe('');
+  });
+});
+
+describe('formatShortDateMY', () => {
+  it('returns a short date like "29 Apr"', () => {
+    const out = formatShortDateMY('2026-04-29');
+    expect(out).toMatch(/29/);
+    expect(out).toMatch(/Apr/);
+  });
+
+  it('returns original string for invalid input', () => {
+    expect(formatShortDateMY('garbage')).toBe('garbage');
+  });
+});
+
+describe('isoToYmdMalaysia', () => {
+  it('extracts the calendar day in Malaysia time', () => {
+    expect(isoToYmdMalaysia('2026-04-29T23:59:59+08:00')).toBe('2026-04-29');
+  });
+
+  it('rolls forward when UTC instant lands the next day in MY time', () => {
+    expect(isoToYmdMalaysia('2026-04-29T20:00:00Z')).toBe('2026-04-30');
+  });
+
+  it('returns empty string for invalid input', () => {
+    expect(isoToYmdMalaysia('not-an-iso')).toBe('');
+    expect(isoToYmdMalaysia('')).toBe('');
+  });
+});
+
+describe('courseForYmd', () => {
+  // 2026-04-26 is a Sunday; matches slotutil.CourseForDate.
+  it.each([
+    ['2026-04-26', 'BRC'], // Sun
+    ['2026-04-27', 'BRC'], // Mon
+    ['2026-04-28', 'BRC'], // Tue
+    ['2026-04-29', 'PLC'], // Wed
+    ['2026-04-30', 'PLC'], // Thu
+    ['2026-05-01', 'PLC'], // Fri
+    ['2026-05-02', 'PLC'], // Sat
+  ])('returns %s for %s', (input, expected) => {
+    expect(courseForYmd(input)).toBe(expected);
+  });
+
+  it('falls back to PLC for invalid input', () => {
+    expect(courseForYmd('not-a-date')).toBe('PLC');
+  });
+});
+
+describe('formatWeekdayDateMY', () => {
+  it('formats with weekday + day + short month', () => {
+    const out = formatWeekdayDateMY('2026-05-06');
+    expect(out).toMatch(/Wed/);
+    expect(out).toMatch(/6/);
+    expect(out).toMatch(/May/);
+  });
+
+  it('returns empty string for empty input', () => {
+    expect(formatWeekdayDateMY('')).toBe('');
+  });
+});
+
+describe('nextSchedulerRunMY', () => {
+  it('targets today when now is before 21:55 MY', () => {
+    // 2026-04-29 12:00 UTC = 2026-04-29 20:00 MY (before 21:55)
+    const now = new Date('2026-04-29T12:00:00Z');
+    const out = nextSchedulerRunMY(now);
+    expect(out.tonight).toBe(true);
+    expect(out.ymd).toBe('2026-04-29');
+  });
+
+  it('targets tomorrow when now is at/after 21:55 MY', () => {
+    // 2026-04-29 14:00 UTC = 2026-04-29 22:00 MY (past 21:55)
+    const now = new Date('2026-04-29T14:00:00Z');
+    const out = nextSchedulerRunMY(now);
+    expect(out.tonight).toBe(false);
+    expect(out.ymd).toBe('2026-04-30');
   });
 });
 

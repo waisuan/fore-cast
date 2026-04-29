@@ -1,10 +1,22 @@
 'use client';
 
-import { useState, useEffect, useCallback } from 'react';
+import { useState, useEffect, useCallback, useMemo } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
+import {
+  addCalendarDaysYmd,
+  courseForYmd,
+  endOfDayMalaysiaIso,
+  formatShortDateMY,
+  formatWeekdayDateMY,
+  isoToYmdMalaysia,
+  nextSchedulerRunMY,
+  SCHEDULER_FIRE_LABEL_MY,
+  todayIsoMalaysia,
+} from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 import SchedulerRunningBanner from '@/components/SchedulerRunningBanner';
+import DatePicker from '@/components/DatePicker';
 
 async function copyToClipboard(text: string): Promise<boolean> {
   if (navigator.clipboard?.writeText) {
@@ -47,6 +59,117 @@ interface PresetData {
   last_run_status: string;
   last_run_message: string;
   last_run_at: string | null;
+  override_course: string;
+  override_until: string | null;
+}
+
+type OverrideMode = 'none' | 'once' | 'days7' | 'until';
+
+type OverridePayload = { course: string; until: string | null };
+
+const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
+
+function buildOverridePayload(
+  mode: OverrideMode,
+  course: string,
+  untilYmd: string,
+): OverridePayload | 'invalid' {
+  if (!course) return { course: '', until: null };
+  switch (mode) {
+    case 'none':
+      return { course: '', until: null };
+    case 'once':
+      return { course, until: null };
+    case 'days7':
+      return { course, until: endOfDayMalaysiaIso(addCalendarDaysYmd(todayIsoMalaysia(), 7)) };
+    case 'until':
+      return untilYmd ? { course, until: endOfDayMalaysiaIso(untilYmd) } : 'invalid';
+  }
+}
+
+// The default course is always "auto by day-of-week"; the override summary
+// references that explicitly so users know what they're reverting to.
+const DEFAULT_COURSE_LABEL = "the day's default course";
+
+function summarizeOverride(
+  mode: OverrideMode,
+  overrideCrs: string,
+  untilYmd: string,
+): string {
+  if (mode === 'none' || !overrideCrs) {
+    return `Scheduler will book ${DEFAULT_COURSE_LABEL} (BRC on Sun/Mon/Tue, PLC otherwise).`;
+  }
+  const back = `, then back to ${DEFAULT_COURSE_LABEL}`;
+  if (mode === 'once') {
+    return `Scheduler will book ${overrideCrs} on the next run only${back}.`;
+  }
+  if (mode === 'days7') {
+    const expiry = formatShortDateMY(addCalendarDaysYmd(todayIsoMalaysia(), 7));
+    return `Scheduler will book ${overrideCrs} for the next 7 days (through ${expiry}, Malaysia time)${back}.`;
+  }
+  if (mode === 'until' && untilYmd) {
+    return `Scheduler will book ${overrideCrs} until end of ${formatShortDateMY(untilYmd)} (Malaysia time)${back}.`;
+  }
+  return 'Pick an end date for the override.';
+}
+
+// Mirrors slotutil.CourseForDate on the backend: BRC on Sun/Mon/Tue, PLC otherwise.
+const DEFAULT_COURSE_BY_DAY: ReadonlyArray<{ days: string; course: string }> = [
+  { days: 'Sun, Mon, Tue', course: 'BRC' },
+  { days: 'Wed, Thu, Fri, Sat', course: 'PLC' },
+];
+
+function DefaultCourseSchedule() {
+  // Concrete "today → +7" preview so the 1-week-ahead rule is unmissable. Computed
+  // from the same scheduler-fire logic used on the homepage so both stay in sync.
+  const next = nextSchedulerRunMY();
+  const bookingYmd = addCalendarDaysYmd(next.ymd, 7);
+  const bookingCourse = courseForYmd(bookingYmd);
+
+  return (
+    <section
+      aria-label="Default course by booking day"
+      className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60"
+    >
+      <p className="mb-1 text-sm font-medium text-gray-900 dark:text-white">
+        Default course (booking 1 week ahead)
+      </p>
+      <p className="mb-3 text-xs text-gray-500 dark:text-gray-400">
+        The scheduler always books exactly <strong>7 days ahead</strong> in Malaysia time. Unless
+        overridden below, the course is picked by the booking date&rsquo;s day of week:
+      </p>
+      <ul className="space-y-1 text-sm">
+        {DEFAULT_COURSE_BY_DAY.map(({ days, course }) => (
+          <li
+            key={course}
+            className="flex items-center gap-2 text-gray-700 dark:text-gray-300"
+          >
+            <span className="rounded bg-white px-2 py-0.5 font-mono text-xs text-gray-900 ring-1 ring-gray-200 dark:bg-gray-900 dark:text-white dark:ring-gray-700">
+              {course}
+            </span>
+            <span>{days}</span>
+          </li>
+        ))}
+      </ul>
+      <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
+        Runs nightly at <strong>{SCHEDULER_FIRE_LABEL_MY}</strong> (Malaysia). Next run targets{' '}
+        <strong>{formatWeekdayDateMY(bookingYmd)}</strong> &rarr;{' '}
+        <span className="font-mono">{bookingCourse}</span>.
+      </p>
+    </section>
+  );
+}
+
+function parseDurationMs(s: string): number | null {
+  const match = s.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/i);
+  if (!match) return null;
+  const n = parseFloat(match[1]);
+  const unit = match[2].toLowerCase();
+  if (unit === 'ms') return n;
+  if (unit === 's') return n * 1000;
+  if (unit === 'm') return n * 60 * 1000;
+  if (unit === 'h') return n * 3600 * 1000;
+  return null;
 }
 
 export default function SettingsPage() {
@@ -54,7 +177,6 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [defaults, setDefaults] = useState<PresetDefaults | null>(null);
-  const [course, setCourse] = useState('');
   const [cutoff, setCutoff] = useState('');
   const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
@@ -64,6 +186,9 @@ export default function SettingsPage() {
   const [copied, setCopied] = useState(false);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [lastRunStatus, setLastRunStatus] = useState<string>('idle');
+  const [overrideMode, setOverrideMode] = useState<OverrideMode>('none');
+  const [overrideCourse, setOverrideCourse] = useState<string>('');
+  const [overrideUntilYmd, setOverrideUntilYmd] = useState<string>('');
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false;
@@ -71,7 +196,6 @@ export default function SettingsPage() {
     try {
       const res = await api.get<PresetData>(API_ENDPOINTS.preset);
       setDefaults(res.defaults ?? null);
-      setCourse(res.course ?? '');
       setCutoff(res.cutoff ?? '');
       setRetryIntervalVal(res.retry_interval ?? res.defaults?.retry_interval ?? '1s');
       setTimeoutVal(res.timeout ?? '');
@@ -79,6 +203,19 @@ export default function SettingsPage() {
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
       setLastRunStatus(res.last_run_status ?? 'idle');
+      const oc = res.override_course ?? '';
+      const ou = res.override_until ?? null;
+      setOverrideCourse(oc);
+      if (!oc) {
+        setOverrideMode('none');
+        setOverrideUntilYmd('');
+      } else if (!ou) {
+        setOverrideMode('once');
+        setOverrideUntilYmd('');
+      } else {
+        setOverrideMode('until');
+        setOverrideUntilYmd(isoToYmdMalaysia(ou));
+      }
     } catch (e) {
       if (!silent) {
         addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
@@ -117,17 +254,13 @@ export default function SettingsPage() {
 
   const MIN_RETRY_MS = 0;
 
-  function parseDurationMs(s: string): number | null {
-    const match = s.trim().match(/^(\d+(?:\.\d+)?)\s*(ms|s|m|h)$/i);
-    if (!match) return null;
-    const n = parseFloat(match[1]);
-    const unit = match[2].toLowerCase();
-    if (unit === 'ms') return n;
-    if (unit === 's') return n * 1000;
-    if (unit === 'm') return n * 60 * 1000;
-    if (unit === 'h') return n * 3600 * 1000;
-    return null;
-  }
+  const overrideSummary = useMemo(
+    () => summarizeOverride(overrideMode, overrideCourse, overrideUntilYmd),
+    [overrideMode, overrideCourse, overrideUntilYmd],
+  );
+  // Recompute every render so the date picker's `min` stays correct if a session
+  // crosses Malaysia midnight. Cost is negligible — both helpers are O(1).
+  const minOverrideDate = addCalendarDaysYmd(todayIsoMalaysia(), 1);
 
   async function handleCopyTopic() {
     if (!ntfyTopic) return;
@@ -166,13 +299,21 @@ export default function SettingsPage() {
         setSaving(false);
         return;
       }
+      const overridePayload = buildOverridePayload(overrideMode, overrideCourse, overrideUntilYmd);
+      if (overridePayload === 'invalid') {
+        addToast('Pick a date for the override', 'error');
+        setSaving(false);
+        return;
+      }
       await api.put(API_ENDPOINTS.preset, {
-        course,
+        course: '',
         cutoff,
         retry_interval: retryInterval || undefined,
         timeout: timeoutVal,
         enable_notifications: enableNotifications,
         enabled,
+        override_course: overridePayload.course,
+        override_until: overridePayload.until,
       });
       addToast('Settings saved', 'success');
       await load();
@@ -200,10 +341,9 @@ export default function SettingsPage() {
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
       )}
       <p className="text-sm text-gray-600 dark:text-gray-400">
-        Configure your auto-booking preset. When enabled, the scheduler will
-        automatically attempt to book a slot for <strong>1 week ahead</strong> on
-        your behalf each time it runs.
+        Configure your nightly auto-booking preset.
       </p>
+      <DefaultCourseSchedule />
       {schedulerRunning && (
         <p className="text-sm text-amber-800 dark:text-amber-200/90">
           Settings are read-only while the scheduler is running. Use <strong>Cancel run</strong> above
@@ -217,23 +357,95 @@ export default function SettingsPage() {
           aria-busy={saving}
         >
           <legend className="sr-only">Auto-booker configuration</legend>
-        <div>
-          <label htmlFor="course" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Course override
-          </label>
-          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Default: {defaults?.course}
+        <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-700/70 dark:bg-amber-900/20">
+          <p className="mb-1 text-sm font-semibold text-amber-900 dark:text-amber-100">
+            Temporary course override
           </p>
-          <select
-            id="course"
-            value={course}
-            onChange={(e) => setCourse(e.target.value)}
-            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-          >
-            <option value="">Auto (by day of week)</option>
-            <option value="BRC">BRC</option>
-            <option value="PLC">PLC</option>
-          </select>
+          <p className="mb-3 text-xs text-amber-800/80 dark:text-amber-200/70">
+            Book a different course than the default schedule above, then revert automatically.
+          </p>
+          <div className="flex flex-col gap-3">
+            <div className="flex flex-col gap-1">
+              <label
+                htmlFor="overrideCourse"
+                className="text-xs text-amber-900 dark:text-amber-200"
+              >
+                Use this course instead
+              </label>
+              <select
+                id="overrideCourse"
+                value={overrideCourse}
+                onChange={(e) => {
+                  const next = e.target.value;
+                  setOverrideCourse(next);
+                  if (!next) {
+                    setOverrideMode('none');
+                  } else if (overrideMode === 'none') {
+                    setOverrideMode('once');
+                  }
+                }}
+                className="w-full max-w-xs rounded border border-amber-300 bg-white px-3 py-2 text-gray-900 dark:border-amber-700/70 dark:bg-gray-800 dark:text-white"
+              >
+                <option value="">No override</option>
+                {COURSE_OPTIONS.map((c) => (
+                  <option key={c} value={c}>
+                    {c}
+                  </option>
+                ))}
+              </select>
+            </div>
+            {overrideCourse && (
+              <fieldset className="flex flex-col gap-2">
+                <legend className="text-xs text-amber-900 dark:text-amber-200">How long</legend>
+                <label className="flex items-center gap-2 text-sm text-amber-900 dark:text-amber-100">
+                  <input
+                    type="radio"
+                    name="overrideMode"
+                    value="once"
+                    checked={overrideMode === 'once'}
+                    onChange={() => setOverrideMode('once')}
+                  />
+                  Next run only
+                </label>
+                <label className="flex items-center gap-2 text-sm text-amber-900 dark:text-amber-100">
+                  <input
+                    type="radio"
+                    name="overrideMode"
+                    value="days7"
+                    checked={overrideMode === 'days7'}
+                    onChange={() => setOverrideMode('days7')}
+                  />
+                  Next 7 days
+                </label>
+                <label className="flex items-center gap-2 text-sm text-amber-900 dark:text-amber-100">
+                  <input
+                    type="radio"
+                    name="overrideMode"
+                    value="until"
+                    checked={overrideMode === 'until'}
+                    onChange={() => {
+                      setOverrideMode('until');
+                      if (!overrideUntilYmd) {
+                        setOverrideUntilYmd(addCalendarDaysYmd(todayIsoMalaysia(), 7));
+                      }
+                    }}
+                  />
+                  Until a specific date
+                </label>
+                {overrideMode === 'until' && (
+                  <div className="w-full max-w-xs">
+                    <DatePicker
+                      aria-label="Override expiry date"
+                      value={overrideUntilYmd}
+                      min={minOverrideDate}
+                      onChange={setOverrideUntilYmd}
+                    />
+                  </div>
+                )}
+              </fieldset>
+            )}
+            <p className="text-xs text-amber-800/80 dark:text-amber-200/70">{overrideSummary}</p>
+          </div>
         </div>
         <div>
           <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">

@@ -18,6 +18,45 @@ function mockRole(): 'ADMIN' | 'NON_ADMIN' {
   return process.env.NEXT_PUBLIC_MOCK_ROLE === 'ADMIN' ? 'ADMIN' : 'NON_ADMIN';
 }
 
+// Mutable in-memory mock so PUT /preset toggles (enable, override, etc.) survive
+// across requests within a single `next dev` process and the homepage / settings
+// reflect them immediately. Reset when the dev server restarts.
+type MockPreset = ReturnType<typeof mockPresetFull>;
+type PresetPatch = Partial<
+  Pick<
+    MockPreset,
+    | 'enabled'
+    | 'enable_notifications'
+    | 'cutoff'
+    | 'retry_interval'
+    | 'timeout'
+    | 'ntfy_topic'
+    | 'course'
+    | 'override_course'
+    | 'override_until'
+  >
+>;
+const presetState: MockPreset = mockPresetFull();
+if (process.env.NEXT_PUBLIC_MOCK_PRESET_ENABLED === 'true') {
+  presetState.enabled = true;
+}
+
+function mergePresetUpdate(body: PresetPatch) {
+  if (typeof body.enabled === 'boolean') presetState.enabled = body.enabled;
+  if (typeof body.enable_notifications === 'boolean') {
+    presetState.enable_notifications = body.enable_notifications;
+  }
+  if (typeof body.cutoff === 'string') presetState.cutoff = body.cutoff;
+  if (typeof body.retry_interval === 'string') presetState.retry_interval = body.retry_interval;
+  if (typeof body.timeout === 'string') presetState.timeout = body.timeout;
+  if (typeof body.ntfy_topic === 'string') presetState.ntfy_topic = body.ntfy_topic;
+  if (typeof body.course === 'string') presetState.course = body.course;
+  if (typeof body.override_course === 'string') presetState.override_course = body.override_course;
+  if (body.override_until === null || typeof body.override_until === 'string') {
+    presetState.override_until = body.override_until ?? null;
+  }
+}
+
 function isLoggedIn(req: NextRequest) {
   return req.cookies.get(MOCK_SESSION_COOKIE)?.value === '1';
 }
@@ -71,10 +110,17 @@ export async function handleDevMockRequest(req: NextRequest): Promise<Response> 
   }
 
   if (segs[0] === 'preset' && segs.length === 1 && method === 'GET') {
-    return json(mockPresetFull());
+    return json(presetState);
   }
 
   if (segs[0] === 'preset' && segs.length === 1 && method === 'PUT') {
+    let body: PresetPatch = {};
+    try {
+      body = (await req.json()) as PresetPatch;
+    } catch {
+      // Invalid JSON: fall through with empty patch (mock is permissive).
+    }
+    mergePresetUpdate(body);
     return json({});
   }
 

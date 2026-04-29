@@ -43,7 +43,7 @@ func (h *SlotsHandler) Slots(w http.ResponseWriter, r *http.Request) {
 	courseID := r.URL.Query().Get("course")
 	if courseID == "" {
 		courseID = slotutil.CourseForDate(date)
-	} else if courseID != booker.CourseBRC && courseID != booker.CoursePLC {
+	} else if !slotutil.IsClubCourse(courseID) {
 		http.Error(w, "invalid course: use BRC or PLC", http.StatusBadRequest)
 		return
 	}

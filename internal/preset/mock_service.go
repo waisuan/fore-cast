@@ -47,6 +47,20 @@ func (mr *MockServiceMockRecorder) ClearCancelRequested(userName interface{}) *g
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCancelRequested", reflect.TypeOf((*MockService)(nil).ClearCancelRequested), userName)
 }
 
+// ClearCourseOverride mocks base method.
+func (m *MockService) ClearCourseOverride(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearCourseOverride", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearCourseOverride indicates an expected call of ClearCourseOverride.
+func (mr *MockServiceMockRecorder) ClearCourseOverride(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCourseOverride", reflect.TypeOf((*MockService)(nil).ClearCourseOverride), userName)
+}
+
 // DeleteByUserName mocks base method.
 func (m *MockService) DeleteByUserName(userName string) error {
 	m.ctrl.T.Helper()

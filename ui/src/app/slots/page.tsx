@@ -1,6 +1,7 @@
 'use client';
 
 import { useState, useEffect, useCallback } from 'react';
+import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
 import { toApiDate, formatTime, todayIsoMalaysia } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
@@ -23,6 +24,7 @@ interface SlotsResponse {
 
 interface PresetStatus {
   last_run_status: string;
+  override_course: string;
 }
 
 export default function SlotsPage() {
@@ -38,7 +40,10 @@ export default function SlotsPage() {
   const loadPreset = useCallback(async () => {
     try {
       const res = await api.get<PresetStatus & { defaults?: unknown }>(API_ENDPOINTS.preset);
-      setPresetStatus({ last_run_status: res.last_run_status ?? 'idle' });
+      setPresetStatus({
+        last_run_status: res.last_run_status ?? 'idle',
+        override_course: res.override_course ?? '',
+      });
     } catch {
       setPresetStatus(null);
     }
@@ -128,6 +133,18 @@ export default function SlotsPage() {
       </h1>
       {schedulerRunning && (
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
+      {!schedulerRunning && presetStatus?.override_course && (
+        <p className="text-xs text-gray-500 dark:text-gray-400">
+          Auto-booker is set to book {presetStatus.override_course} for upcoming runs. The course
+          dropdown below only filters this slot list.{' '}
+          <Link
+            href="/settings"
+            className="font-medium text-blue-600 underline underline-offset-2 hover:no-underline dark:text-blue-400"
+          >
+            Change
+          </Link>
+        </p>
       )}
       {!schedulerRunning && (
         <div className="flex flex-col gap-4 sm:flex-row sm:items-stretch sm:gap-4">

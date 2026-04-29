@@ -11,6 +11,7 @@ interface DatePickerProps {
   onChange: (isoDate: string) => void;
   min?: string;
   placeholder?: string;
+  'aria-label'?: string;
 }
 
 function parseYmd(ymd: string | undefined): Date | undefined {
@@ -77,6 +78,7 @@ export default function DatePicker({
   onChange,
   min,
   placeholder = 'DD/MM/YYYY',
+  'aria-label': ariaLabel,
 }: DatePickerProps) {
   const [open, setOpen] = useState(false);
   const [inputText, setInputText] = useState('');
@@ -170,6 +172,7 @@ export default function DatePicker({
           type="text"
           value={displayValue}
           placeholder={placeholder}
+          aria-label={ariaLabel}
           onChange={(e) => setInputText(e.target.value)}
           onFocus={handleInputFocus}
           onBlur={handleInputBlur}

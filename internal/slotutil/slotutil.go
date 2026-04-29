@@ -12,6 +12,11 @@ import (
 // Default cutoff: do not book any slot at or after this time.
 const DefaultCutoffTeeTime = "1899-12-30T08:15:00"
 
+// IsClubCourse reports whether id is a known club course code (BRC or PLC).
+func IsClubCourse(id string) bool {
+	return id == booker.CourseBRC || id == booker.CoursePLC
+}
+
 // CourseForDate returns BRC for Mon/Tue/Sun, PLC otherwise (weekday from date string YYYY/MM/DD).
 func CourseForDate(txnDate string) string {
 	t, err := time.Parse("2006/01/02", txnDate)

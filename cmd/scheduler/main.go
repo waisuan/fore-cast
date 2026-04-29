@@ -144,6 +144,16 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 	defer func() { _ = d.Preset.ClearCancelRequested(p.UserName) }()
 
+	txnDate := txnDateFromConfig(d.Config)
+	courseID, clearOverrideAfterRun := resolveCourseForRun(d.Preset, p, txnDate, time.Now())
+	if clearOverrideAfterRun {
+		defer func() {
+			if err := d.Preset.ClearCourseOverride(p.UserName); err != nil {
+				logger.Warn("failed to clear course override", logger.String("user", p.UserName), logger.Err(err))
+			}
+		}()
+	}
+
 	cred, err := d.Credentials.Get(p.UserName)
 	if err != nil {
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "credentials: "+err.Error())
@@ -160,16 +170,11 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 
 	token, err := d.Booker.Login(p.UserName, password)
-	txnDate := txnDateFromConfig(d.Config)
 	if err != nil {
 		logAttempt(d.History, p, txnDate, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
 		notifyUser(d.Notify, p, "FAILED: login: "+err.Error())
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "login: "+err.Error())
 		return fmt.Errorf("login: %w", err)
-	}
-	courseID := strings.TrimSpace(strings.ToUpper(p.Course.String))
-	if courseID == "" {
-		courseID = slotutil.CourseForDate(txnDate)
 	}
 
 	cutoffTeeTime, err := slotutil.ParseCutoff(p.Cutoff)
@@ -278,6 +283,29 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 	updateRunDone(d.Preset, p.UserName, runStatusFromResult(result.Status), result.Message)
 	return nil
+}
+
+// resolveCourseForRun applies the temporary override (if any) and returns the
+// course to book against plus whether the override should be cleared once the
+// run completes. Expired overrides are cleared immediately and the default
+// course is used.
+func resolveCourseForRun(svc preset.Service, p preset.Preset, txnDate string, now time.Time) (string, bool) {
+	state, override := preset.ResolveOverride(p, now)
+	switch state {
+	case preset.OverrideExpired:
+		if err := svc.ClearCourseOverride(p.UserName); err != nil {
+			logger.Warn("failed to clear expired course override", logger.String("user", p.UserName), logger.Err(err))
+		}
+	case preset.OverrideActive:
+		return strings.ToUpper(override), false
+	case preset.OverrideOnce:
+		return strings.ToUpper(override), true
+	}
+	courseID := strings.TrimSpace(strings.ToUpper(p.Course.String))
+	if courseID == "" {
+		courseID = slotutil.CourseForDate(txnDate)
+	}
+	return courseID, false
 }
 
 func txnDateFromConfig(cfg *deps.Config) string {

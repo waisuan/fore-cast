@@ -4,12 +4,15 @@ import (
 	"database/sql"
 	"encoding/json"
 	"errors"
+	"fmt"
 	"net/http"
+	"strings"
 	"time"
 
 	"github.com/waisuan/alfred/internal/context"
 	"github.com/waisuan/alfred/internal/notify"
 	"github.com/waisuan/alfred/internal/preset"
+	"github.com/waisuan/alfred/internal/slotutil"
 )
 
 // PresetHandler handles /api/v1/preset endpoints.
@@ -40,16 +43,22 @@ type PresetResponse struct {
 	LastRunStatus       string         `json:"last_run_status"`
 	LastRunMessage      string         `json:"last_run_message"`
 	LastRunAt           *string        `json:"last_run_at"`
+	// Temporary course override.
+	OverrideCourse string  `json:"override_course"`
+	OverrideUntil  *string `json:"override_until"`
 }
 
-// PresetRequest is the JSON body for PUT /api/v1/preset.
+// PresetRequest is the JSON body for PUT /api/v1/preset. See preset.Preset for
+// the OverrideCourse / OverrideUntil semantics; OverrideUntil must be RFC3339.
 type PresetRequest struct {
-	Course              string `json:"course"`
-	Cutoff              string `json:"cutoff"`
-	RetryInterval       string `json:"retry_interval"`
-	Timeout             string `json:"timeout"`
-	EnableNotifications *bool  `json:"enable_notifications"`
-	Enabled             bool   `json:"enabled"`
+	Course              string  `json:"course"`
+	Cutoff              string  `json:"cutoff"`
+	RetryInterval       string  `json:"retry_interval"`
+	Timeout             string  `json:"timeout"`
+	EnableNotifications *bool   `json:"enable_notifications"`
+	Enabled             bool    `json:"enabled"`
+	OverrideCourse      string  `json:"override_course"`
+	OverrideUntil       *string `json:"override_until"`
 }
 
 // GetPreset handles GET /api/v1/preset.
@@ -98,6 +107,15 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 			t := existing.LastRunAt.Time.Format("2006-01-02T15:04:05Z07:00")
 			resp.LastRunAt = &t
 		}
+		// Hide overrides that have already expired so the UI never shows stale state.
+		switch state, course := preset.ResolveOverride(*existing, time.Now()); state {
+		case preset.OverrideActive, preset.OverrideOnce:
+			resp.OverrideCourse = course
+			if existing.OverrideUntil.Valid {
+				t := existing.OverrideUntil.Time.Format("2006-01-02T15:04:05Z07:00")
+				resp.OverrideUntil = &t
+			}
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -130,14 +148,22 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	ntfyTopic := resolveNtfyTopic(existing, u.UserName, req.EnableNotifications)
 
+	overrideCourse, overrideUntil, err := parseOverride(req.OverrideCourse, req.OverrideUntil)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	p := preset.Preset{
-		UserName:      u.UserName,
-		Course:        sql.NullString{String: req.Course, Valid: req.Course != ""},
-		Cutoff:        req.Cutoff,
-		RetryInterval: req.RetryInterval,
-		Timeout:       req.Timeout,
-		NtfyTopic:     ntfyTopic,
-		Enabled:       req.Enabled,
+		UserName:       u.UserName,
+		Course:         sql.NullString{String: req.Course, Valid: req.Course != ""},
+		Cutoff:         req.Cutoff,
+		RetryInterval:  req.RetryInterval,
+		Timeout:        req.Timeout,
+		NtfyTopic:      ntfyTopic,
+		Enabled:        req.Enabled,
+		OverrideCourse: overrideCourse,
+		OverrideUntil:  overrideUntil,
 	}
 	if p.Cutoff == "" {
 		p.Cutoff = preset.DefaultCutoff
@@ -186,6 +212,31 @@ func (h *PresetHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "cancel_requested"})
+}
+
+// parseOverride validates a course override pair and converts it to nullable
+// DB fields. Empty course clears the override. A non-empty course must be a
+// known club course; a non-empty until must be RFC3339 and in the future.
+func parseOverride(courseRaw string, untilRaw *string) (sql.NullString, sql.NullTime, error) {
+	course := strings.TrimSpace(strings.ToUpper(courseRaw))
+	if course == "" {
+		return sql.NullString{}, sql.NullTime{}, nil
+	}
+	if !slotutil.IsClubCourse(course) {
+		return sql.NullString{}, sql.NullTime{}, fmt.Errorf("invalid override course: use BRC or PLC")
+	}
+	courseNS := sql.NullString{String: course, Valid: true}
+	if untilRaw == nil || strings.TrimSpace(*untilRaw) == "" {
+		return courseNS, sql.NullTime{}, nil
+	}
+	t, err := time.Parse(time.RFC3339, strings.TrimSpace(*untilRaw))
+	if err != nil {
+		return sql.NullString{}, sql.NullTime{}, fmt.Errorf("invalid override_until: use RFC3339 (e.g. 2026-04-29T23:59:59+08:00)")
+	}
+	if !t.After(time.Now()) {
+		return sql.NullString{}, sql.NullTime{}, fmt.Errorf("override_until must be in the future")
+	}
+	return courseNS, sql.NullTime{Time: t, Valid: true}, nil
 }
 
 // resolveNtfyTopic determines the ntfy topic based on the user's notification

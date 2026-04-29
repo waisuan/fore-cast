@@ -6,6 +6,7 @@ import { formatDate, formatTime } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 import SchedulerRunningBanner from '@/components/SchedulerRunningBanner';
+import CourseOverrideBanner from '@/components/CourseOverrideBanner';
 
 interface BookingItem {
   BookingID: string;
@@ -28,6 +29,8 @@ interface BookingResponse {
 
 interface PresetStatus {
   last_run_status: string;
+  override_course: string;
+  override_until: string | null;
 }
 
 export default function BookingPage() {
@@ -41,7 +44,11 @@ export default function BookingPage() {
   const loadPreset = useCallback(async () => {
     try {
       const res = await api.get<PresetStatus & { defaults?: unknown }>(API_ENDPOINTS.preset);
-      setPresetStatus({ last_run_status: res.last_run_status ?? 'idle' });
+      setPresetStatus({
+        last_run_status: res.last_run_status ?? 'idle',
+        override_course: res.override_course ?? '',
+        override_until: res.override_until ?? null,
+      });
     } catch {
       setPresetStatus(null);
     }
@@ -125,6 +132,12 @@ export default function BookingPage() {
       </h1>
       {schedulerRunning && (
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
+      {!schedulerRunning && presetStatus?.override_course && (
+        <CourseOverrideBanner
+          overrideCourse={presetStatus.override_course}
+          overrideUntil={presetStatus.override_until}
+        />
       )}
       {!schedulerRunning && loading && (
         <div className="flex justify-center py-8">

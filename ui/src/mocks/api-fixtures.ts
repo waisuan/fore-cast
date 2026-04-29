@@ -29,6 +29,8 @@ export function mockPresetFull() {
     last_run_status: 'idle',
     last_run_message: '',
     last_run_at: null,
+    override_course: '',
+    override_until: null as string | null,
   };
 }
 

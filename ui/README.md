@@ -35,6 +35,15 @@ make ui-mock-admin
 # or: npm run dev:mock:admin
 ```
 
+The mock `/preset` endpoint is **stateful** within a `next dev` process: toggling
+"Enable auto-booking" or saving overrides in Settings persists in memory and is
+reflected on Home/Bookings until the dev server restarts. To start already
+enabled (skip the first toggle), pass the env flag inline:
+
+```bash
+NEXT_PUBLIC_MOCK_PRESET_ENABLED=true make ui-mock
+```
+
 ## Scripts
 
 - `npm run dev` – development server

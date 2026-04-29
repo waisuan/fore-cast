@@ -364,6 +364,158 @@ func (s *PresetHandlerSuite) TestSavePreset_DisableNotifications_ClearsTopic() {
 	s.Assert().Equal(http.StatusOK, rec.Code)
 }
 
+// --- Course override ---
+
+func (s *PresetHandlerSuite) TestSavePreset_OverrideOnce_PersistsCourseAndNullExpiry() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().True(p.OverrideCourse.Valid)
+			s.Assert().Equal("PLC", p.OverrideCourse.String)
+			s.Assert().False(p.OverrideUntil.Valid, "next-run-only override has no expiry")
+			return nil
+		})
+
+	body, _ := json.Marshal(PresetRequest{
+		OverrideCourse: "PLC",
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_OverrideUntil_PersistsExpiry() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	expiry := time.Now().Add(7 * 24 * time.Hour).UTC().Truncate(time.Second)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().Equal("BRC", p.OverrideCourse.String)
+			s.Assert().True(p.OverrideUntil.Valid)
+			s.Assert().WithinDuration(expiry, p.OverrideUntil.Time, time.Second)
+			return nil
+		})
+
+	until := expiry.Format(time.RFC3339)
+	body, _ := json.Marshal(PresetRequest{
+		OverrideCourse: "BRC",
+		OverrideUntil:  &until,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_OverrideEmpty_ClearsBoth() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().False(p.OverrideCourse.Valid)
+			s.Assert().False(p.OverrideUntil.Valid)
+			return nil
+		})
+
+	until := time.Now().Add(time.Hour).Format(time.RFC3339)
+	body, _ := json.Marshal(PresetRequest{
+		OverrideCourse: "",
+		OverrideUntil:  &until,
+	})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_OverrideInvalidCourse_BadRequest() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+
+	body, _ := json.Marshal(PresetRequest{OverrideCourse: "XYZ"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_OverrideUntilInPast_BadRequest() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+
+	past := time.Now().Add(-time.Hour).Format(time.RFC3339)
+	body, _ := json.Marshal(PresetRequest{OverrideCourse: "PLC", OverrideUntil: &past})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestGetPreset_OverrideActive_Surfaced() {
+	expiry := time.Now().Add(48 * time.Hour).UTC().Truncate(time.Second)
+	s.mockSvc.EXPECT().
+		GetPreset("u").
+		Return(&preset.Preset{
+			UserName:       "u",
+			Cutoff:         "8:15",
+			RetryInterval:  "1s",
+			Timeout:        "10m",
+			OverrideCourse: sql.NullString{String: "BRC", Valid: true},
+			OverrideUntil:  sql.NullTime{Time: expiry, Valid: true},
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.GetPreset(rec, req)
+
+	s.Require().Equal(http.StatusOK, rec.Code)
+	var resp PresetResponse
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Equal("BRC", resp.OverrideCourse)
+	s.Require().NotNil(resp.OverrideUntil)
+}
+
+func (s *PresetHandlerSuite) TestGetPreset_OverrideExpired_Hidden() {
+	past := time.Now().Add(-time.Hour).UTC()
+	s.mockSvc.EXPECT().
+		GetPreset("u").
+		Return(&preset.Preset{
+			UserName:       "u",
+			Cutoff:         "8:15",
+			RetryInterval:  "1s",
+			Timeout:        "10m",
+			OverrideCourse: sql.NullString{String: "BRC", Valid: true},
+			OverrideUntil:  sql.NullTime{Time: past, Valid: true},
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.GetPreset(rec, req)
+
+	s.Require().Equal(http.StatusOK, rec.Code)
+	var resp PresetResponse
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Empty(resp.OverrideCourse)
+	s.Assert().Nil(resp.OverrideUntil)
+}
+
 func (s *PresetHandlerSuite) TestCancelRun_Unauthorized() {
 	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/cancel", nil)
 	rec := httptest.NewRecorder()
