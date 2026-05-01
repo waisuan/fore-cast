@@ -31,6 +31,7 @@ export function mockPresetFull() {
     last_run_at: null,
     override_course: '',
     override_until: null as string | null,
+    skip_next_run: false,
   };
 }
 

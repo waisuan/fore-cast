@@ -61,6 +61,35 @@ func (mr *MockServiceMockRecorder) ClearCourseOverride(userName interface{}) *go
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearCourseOverride", reflect.TypeOf((*MockService)(nil).ClearCourseOverride), userName)
 }
 
+// ClearSkipNextRun mocks base method.
+func (m *MockService) ClearSkipNextRun(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ClearSkipNextRun", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ClearSkipNextRun indicates an expected call of ClearSkipNextRun.
+func (mr *MockServiceMockRecorder) ClearSkipNextRun(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ClearSkipNextRun", reflect.TypeOf((*MockService)(nil).ClearSkipNextRun), userName)
+}
+
+// ConsumeSkipNextRun mocks base method.
+func (m *MockService) ConsumeSkipNextRun(userName string) (bool, error) {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ConsumeSkipNextRun", userName)
+	ret0, _ := ret[0].(bool)
+	ret1, _ := ret[1].(error)
+	return ret0, ret1
+}
+
+// ConsumeSkipNextRun indicates an expected call of ConsumeSkipNextRun.
+func (mr *MockServiceMockRecorder) ConsumeSkipNextRun(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ConsumeSkipNextRun", reflect.TypeOf((*MockService)(nil).ConsumeSkipNextRun), userName)
+}
+
 // DeleteByUserName mocks base method.
 func (m *MockService) DeleteByUserName(userName string) error {
 	m.ctrl.T.Helper()
@@ -117,6 +146,20 @@ func (m *MockService) RequestCancelRun(userName string) error {
 func (mr *MockServiceMockRecorder) RequestCancelRun(userName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestCancelRun", reflect.TypeOf((*MockService)(nil).RequestCancelRun), userName)
+}
+
+// RequestSkipNextRun mocks base method.
+func (m *MockService) RequestSkipNextRun(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "RequestSkipNextRun", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// RequestSkipNextRun indicates an expected call of RequestSkipNextRun.
+func (mr *MockServiceMockRecorder) RequestSkipNextRun(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestSkipNextRun", reflect.TypeOf((*MockService)(nil).RequestSkipNextRun), userName)
 }
 
 // UpdatePresetRunStatus mocks base method.

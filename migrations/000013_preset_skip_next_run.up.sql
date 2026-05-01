@@ -1,0 +1,2 @@
+ALTER TABLE booking_presets
+    ADD COLUMN IF NOT EXISTS skip_next_run BOOLEAN NOT NULL DEFAULT FALSE;

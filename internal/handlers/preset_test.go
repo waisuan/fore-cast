@@ -549,6 +549,48 @@ func (s *PresetHandlerSuite) TestCancelRun_NotRunning() {
 	s.Assert().Equal(http.StatusConflict, rec.Code)
 }
 
+func (s *PresetHandlerSuite) TestSkipNextRun_Unauthorized() {
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/skip-next", nil)
+	rec := httptest.NewRecorder()
+	s.handler.SkipNextRun(rec, req)
+	s.Assert().Equal(http.StatusUnauthorized, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSkipNextRun_MethodNotAllowed() {
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset/skip-next", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SkipNextRun(rec, req)
+	s.Assert().Equal(http.StatusMethodNotAllowed, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSkipNextRun_Post_Success() {
+	s.mockSvc.EXPECT().RequestSkipNextRun("u").Return(nil)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/skip-next", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SkipNextRun(rec, req)
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSkipNextRun_Post_NotEnabled() {
+	s.mockSvc.EXPECT().RequestSkipNextRun("u").Return(preset.ErrSkipNotEnabled)
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/preset/skip-next", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SkipNextRun(rec, req)
+	s.Assert().Equal(http.StatusConflict, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSkipNextRun_Delete_Success() {
+	s.mockSvc.EXPECT().ClearSkipNextRun("u").Return(nil)
+	req := httptest.NewRequest(http.MethodDelete, "/api/v1/preset/skip-next", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SkipNextRun(rec, req)
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
 func TestPresetHandlerSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(PresetHandlerSuite))

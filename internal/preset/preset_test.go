@@ -268,6 +268,72 @@ func TestRequestCancelRun(t *testing.T) {
 	assert.ErrorIs(t, err, preset.ErrCancelNotRunning)
 }
 
+func TestSkipNextRun(t *testing.T) {
+	t.Parallel()
+	ctx := context.Background()
+
+	ctr, err := postgres.Run(ctx,
+		"postgres:16-alpine",
+		postgres.WithDatabase("skiptest"),
+		postgres.WithUsername("test"),
+		postgres.WithPassword("test"),
+		postgres.BasicWaitStrategies(),
+	)
+	require.NoError(t, err)
+	defer func() { _ = testcontainers.TerminateContainer(ctr) }()
+
+	connStr, err := ctr.ConnectionString(ctx, "sslmode=disable")
+	require.NoError(t, err)
+
+	cfg := &deps.Config{DatabaseURL: connStr}
+	conn, err := deps.NewPostgresClient(cfg, migrations.FS)
+	require.NoError(t, err)
+	defer func() { _ = conn.Close() }()
+
+	svc := preset.NewService(conn)
+
+	_, err = conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "enc")
+	require.NoError(t, err)
+
+	// Disabled preset rejects skip requests so the flag can never silently linger.
+	require.NoError(t, svc.UpsertPreset(preset.Preset{
+		UserName: "alice", Cutoff: "8:15", RetryInterval: "1s", Timeout: "10m", Enabled: false,
+	}))
+	assert.ErrorIs(t, svc.RequestSkipNextRun("alice"), preset.ErrSkipNotEnabled)
+
+	require.NoError(t, svc.UpsertPreset(preset.Preset{
+		UserName: "alice", Cutoff: "8:15", RetryInterval: "1s", Timeout: "10m", Enabled: true,
+	}))
+
+	require.NoError(t, svc.RequestSkipNextRun("alice"))
+	p, err := svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.True(t, p.SkipNextRun)
+
+	require.NoError(t, svc.ClearSkipNextRun("alice"))
+	p, err = svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.False(t, p.SkipNextRun)
+
+	// Consume returns the prior value and always leaves the flag FALSE.
+	require.NoError(t, svc.RequestSkipNextRun("alice"))
+	was, err := svc.ConsumeSkipNextRun("alice")
+	require.NoError(t, err)
+	assert.True(t, was)
+	p, err = svc.GetPreset("alice")
+	require.NoError(t, err)
+	assert.False(t, p.SkipNextRun)
+
+	was, err = svc.ConsumeSkipNextRun("alice")
+	require.NoError(t, err)
+	assert.False(t, was)
+
+	// Consume on a missing preset is a benign no-op.
+	was, err = svc.ConsumeSkipNextRun("nobody")
+	require.NoError(t, err)
+	assert.False(t, was)
+}
+
 func TestDeleteByUserName(t *testing.T) {
 	t.Parallel()
 	ctx := context.Background()

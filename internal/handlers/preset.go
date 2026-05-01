@@ -46,6 +46,7 @@ type PresetResponse struct {
 	// Temporary course override.
 	OverrideCourse string  `json:"override_course"`
 	OverrideUntil  *string `json:"override_until"`
+	SkipNextRun    bool    `json:"skip_next_run"`
 }
 
 // PresetRequest is the JSON body for PUT /api/v1/preset. See preset.Preset for
@@ -116,6 +117,7 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 				resp.OverrideUntil = &t
 			}
 		}
+		resp.SkipNextRun = existing.SkipNextRun
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -189,6 +191,41 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"status": "saved"})
+}
+
+// SkipNextRun handles POST and DELETE on /api/v1/preset/skip-next — POST queues
+// a one-shot skip for the upcoming scheduler fire; DELETE undoes a queued skip.
+func (h *PresetHandler) SkipNextRun(w http.ResponseWriter, r *http.Request) {
+	switch r.Method {
+	case http.MethodPost, http.MethodDelete:
+	default:
+		http.Error(w, "method not allowed", http.StatusMethodNotAllowed)
+		return
+	}
+	u := context.UserFrom(r.Context())
+	if u == nil {
+		http.Error(w, "unauthorized", http.StatusUnauthorized)
+		return
+	}
+	if r.Method == http.MethodPost {
+		if err := h.Service.RequestSkipNextRun(u.UserName); err != nil {
+			if errors.Is(err, preset.ErrSkipNotEnabled) {
+				http.Error(w, err.Error(), http.StatusConflict)
+				return
+			}
+			http.Error(w, err.Error(), http.StatusInternalServerError)
+			return
+		}
+		w.Header().Set("Content-Type", "application/json")
+		_ = json.NewEncoder(w).Encode(map[string]string{"status": "skip_requested"})
+		return
+	}
+	if err := h.Service.ClearSkipNextRun(u.UserName); err != nil {
+		http.Error(w, err.Error(), http.StatusInternalServerError)
+		return
+	}
+	w.Header().Set("Content-Type", "application/json")
+	_ = json.NewEncoder(w).Encode(map[string]string{"status": "skip_cleared"})
 }
 
 // CancelRun handles POST /api/v1/preset/cancel — requests cooperative cancellation of an in-flight scheduler run.

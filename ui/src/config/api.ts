@@ -13,6 +13,7 @@ export const API_ENDPOINTS = {
   history: '/api/v1/history',
   preset: '/api/v1/preset',
   presetCancel: '/api/v1/preset/cancel',
+  presetSkipNext: '/api/v1/preset/skip-next',
   adminRegister: '/api/v1/admin/register',
   adminUsers: '/api/v1/admin/users',
 } as const;

@@ -57,6 +57,7 @@ func New(d *deps.Dependencies) http.Handler {
 	member.HandleFunc("/preset", presetHandler.GetPreset).Methods(http.MethodGet)
 	member.HandleFunc("/preset", presetHandler.SavePreset).Methods(http.MethodPut)
 	member.HandleFunc("/preset/cancel", presetHandler.CancelRun).Methods(http.MethodPost)
+	member.HandleFunc("/preset/skip-next", presetHandler.SkipNextRun).Methods(http.MethodPost, http.MethodDelete)
 
 	bookerAPI := member.PathPrefix("").Subrouter()
 	bookerAPI.Use(middlewares.TokenRefresh(d.Booker, d.Credentials, d.Config.EncryptionKey))

@@ -101,6 +101,7 @@ func TestRun_NoSlotsBeforeCutoff(t *testing.T) {
 	result, err := Run(testCtx(t, cfg), cfg, mock)
 	require.Error(t, err)
 	assert.Equal(t, StatusNoSlots, result.Status)
+	assert.Equal(t, cfg.CourseID, result.CourseID)
 	assert.Contains(t, err.Error(), "no slots available")
 }
 
@@ -297,6 +298,8 @@ func TestRun_AllSlotsFlightAlreadyReserved_ExitsWithoutRetrySleep(t *testing.T) 
 	elapsed := time.Since(start)
 	require.Error(t, err)
 	assert.Equal(t, StatusFailed, result.Status)
+	assert.Equal(t, cfg.CourseID, result.CourseID)
+	assert.Contains(t, result.Message, cfg.CourseID)
 	assert.Contains(t, err.Error(), "already reserved")
 	assert.Less(t, elapsed, 500*time.Millisecond, "should not sleep between passes when all slots are already reserved")
 }

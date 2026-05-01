@@ -139,6 +139,17 @@ func run(d *deps.Dependencies) error {
 }
 
 func processPreset(d *deps.Dependencies, p preset.Preset) error {
+	// Consume skip before marking running so last_run/history stay clean; the UPDATE is conditional (no double-skip on crash).
+	if skip, err := d.Preset.ConsumeSkipNextRun(p.UserName); err != nil {
+		logger.Warn("failed to consume skip flag", logger.String("user", p.UserName), logger.Err(err))
+	} else if skip {
+		logger.Info("skipping run by user request", logger.String("user", p.UserName))
+		if err := d.Preset.ClearCancelRequested(p.UserName); err != nil {
+			logger.Warn("failed to clear cancel requested", logger.String("user", p.UserName), logger.Err(err))
+		}
+		return nil
+	}
+
 	if err := d.Preset.UpdatePresetRunStatus(p.UserName, preset.RunStatusRunning, ""); err != nil {
 		logger.Warn("failed to set running status", logger.String("user", p.UserName), logger.Err(err))
 	}

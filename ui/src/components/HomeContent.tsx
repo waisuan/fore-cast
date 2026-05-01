@@ -24,6 +24,7 @@ interface PresetStatus {
   last_run_at: string | null;
   override_course: string;
   override_until: string | null;
+  skip_next_run: boolean;
 }
 
 export default function HomeContent() {
@@ -31,6 +32,7 @@ export default function HomeContent() {
   const [status, setStatus] = useState<PresetStatus | null>(null);
   const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
+  const [skipBusy, setSkipBusy] = useState(false);
 
   const load = useCallback(
     async (opts?: { silent?: boolean }) => {
@@ -44,6 +46,7 @@ export default function HomeContent() {
           last_run_at: res.last_run_at ?? null,
           override_course: res.override_course ?? '',
           override_until: res.override_until ?? null,
+          skip_next_run: res.skip_next_run ?? false,
         });
       } catch (e) {
         setStatus(null);
@@ -68,6 +71,34 @@ export default function HomeContent() {
     }
   }, [addToast, load]);
 
+  const toggleSkipNextRun = useCallback(
+    async (queued: boolean) => {
+      setSkipBusy(true);
+      try {
+        if (queued) {
+          await api.post(API_ENDPOINTS.presetSkipNext);
+          addToast('Next run will be skipped.', 'success');
+        } else {
+          await api.delete(API_ENDPOINTS.presetSkipNext);
+          addToast('Skip cancelled — next run is back on.', 'info');
+        }
+        await load({ silent: true });
+      } catch (e) {
+        addToast(
+          e instanceof ApiError
+            ? e.message
+            : queued
+              ? 'Failed to skip next run'
+              : 'Failed to undo skip',
+          'error',
+        );
+      } finally {
+        setSkipBusy(false);
+      }
+    },
+    [addToast, load],
+  );
+
   useEffect(() => {
     load();
   }, [load]);
@@ -79,6 +110,7 @@ export default function HomeContent() {
     last_run_at,
     override_course,
     override_until,
+    skip_next_run,
   } = status ?? {};
   const isRecent = last_run_at
     ? Date.now() - new Date(last_run_at).getTime() < 23 * 60 * 60 * 1000
@@ -99,24 +131,27 @@ export default function HomeContent() {
 
   const schedulerRunning = last_run_status === 'running';
 
-  // Preview the next scheduled job: which day will be booked and on which
-  // course (override wins if it would still be active when the scheduler fires).
+  // Next job preview: default course vs override; if the next fire is skipped, shift dates by one day.
   const upcoming = useMemo(() => {
     if (!enabled || schedulerRunning) return null;
     const next = nextSchedulerRunMY();
-    const bookingYmd = addCalendarDaysYmd(next.ymd, 7);
+    const skipped = !!skip_next_run;
+    const fireYmd = skipped ? addCalendarDaysYmd(next.ymd, 1) : next.ymd;
+    const bookingYmd = addCalendarDaysYmd(fireYmd, 7);
     const fireHH = String(SCHEDULER_FIRE_HOUR_MY).padStart(2, '0');
     const fireMM = String(SCHEDULER_FIRE_MINUTE_MY).padStart(2, '0');
-    const fireInstant = new Date(`${next.ymd}T${fireHH}:${fireMM}:00+08:00`).getTime();
+    const fireInstant = new Date(`${fireYmd}T${fireHH}:${fireMM}:00+08:00`).getTime();
     const overrideAppliesToNextRun =
       !!override_course && (!override_until || new Date(override_until).getTime() > fireInstant);
     return {
       bookingLabel: formatWeekdayDateMY(bookingYmd),
+      fireLabel: formatWeekdayDateMY(fireYmd),
       course: overrideAppliesToNextRun && override_course ? override_course : courseForYmd(bookingYmd),
       whenLabel: next.tonight ? 'tonight' : 'tomorrow night',
       isOverride: overrideAppliesToNextRun,
+      skipped,
     };
-  }, [enabled, schedulerRunning, override_course, override_until]);
+  }, [enabled, schedulerRunning, override_course, override_until, skip_next_run]);
 
   useEffect(() => {
     if (!schedulerRunning) return;
@@ -135,15 +170,57 @@ export default function HomeContent() {
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
       )}
       {upcoming && (
-        <div className="rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100">
-          <p>
-            Next auto-booking: <strong className="font-semibold">{upcoming.bookingLabel}</strong>{' '}
-            on <strong className="font-semibold">{upcoming.course}</strong>
-            {upcoming.isOverride && ' (override)'}.
-          </p>
-          <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
-            Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
-          </p>
+        <div
+          className={`rounded-lg border px-4 py-3 text-sm ${
+            upcoming.skipped
+              ? 'border-gray-300 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'
+              : 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'
+          }`}
+        >
+          {upcoming.skipped ? (
+            <>
+              <p>
+                The upcoming auto-booking run is{' '}
+                <strong className="font-semibold">skipped</strong>.
+              </p>
+              <p className="mt-1">
+                Auto-booker resumes <strong className="font-semibold">{upcoming.fireLabel}</strong>{' '}
+                at {SCHEDULER_FIRE_LABEL_MY} (Malaysia) and will book{' '}
+                <strong className="font-semibold">{upcoming.bookingLabel}</strong> on{' '}
+                <strong className="font-semibold">{upcoming.course}</strong>
+                {upcoming.isOverride && ' (override)'}.
+              </p>
+              <button
+                type="button"
+                onClick={() => void toggleSkipNextRun(false)}
+                disabled={skipBusy}
+                aria-busy={skipBusy}
+                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60"
+              >
+                Undo skip
+              </button>
+            </>
+          ) : (
+            <>
+              <p>
+                Next auto-booking: <strong className="font-semibold">{upcoming.bookingLabel}</strong>{' '}
+                on <strong className="font-semibold">{upcoming.course}</strong>
+                {upcoming.isOverride && ' (override)'}.
+              </p>
+              <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
+                Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
+              </p>
+              <button
+                type="button"
+                onClick={() => void toggleSkipNextRun(true)}
+                disabled={skipBusy}
+                aria-busy={skipBusy}
+                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60"
+              >
+                Skip next run
+              </button>
+            </>
+          )}
         </div>
       )}
       {enabled && override_course && (

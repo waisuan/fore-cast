@@ -49,6 +49,17 @@ type Result struct {
 	BookingID string
 }
 
+func resultWithCourse(cfg Config, status Status, msg string) Result {
+	if cfg.CourseID != "" && msg != "" {
+		msg = fmt.Sprintf("[%s] %s", cfg.CourseID, msg)
+	}
+	return Result{
+		Status:   status,
+		Message:  msg,
+		CourseID: cfg.CourseID,
+	}
+}
+
 // Run fetches slots before the cutoff, then repeatedly walks them in order: CheckTeeTimeStatus,
 // then at most one BookTeeTime per slot (skipped when the check Reason indicates the flight is
 // already reserved). Sleeps RetryInterval only between full passes. Invalid token aborts immediately.
@@ -59,17 +70,18 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 	if err != nil {
 		if errors.Is(err, booker.ErrInvalidToken) {
 			msg := "session expired — please log in again"
-			return Result{Status: StatusFailed, Message: msg},
-				fmt.Errorf("get tee times: %w", err)
+			r := resultWithCourse(cfg, StatusFailed, msg)
+			return r, fmt.Errorf("get tee times: %w", err)
 		}
-		return Result{Status: StatusFailed, Message: err.Error()},
-			fmt.Errorf("get tee times: %w", err)
+		r := resultWithCourse(cfg, StatusFailed, err.Error())
+		return r, fmt.Errorf("get tee times: %w", err)
 	}
 
 	slotsBeforeCutoff := slotutil.SlotsBeforeCutoff(slots, cfg.CutoffTeeTime)
 	if len(slotsBeforeCutoff) == 0 {
 		msg := fmt.Sprintf("no slots available before %s cutoff", slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime))
-		return Result{Status: StatusNoSlots, Message: msg}, fmt.Errorf("%s", msg)
+		r := resultWithCourse(cfg, StatusNoSlots, msg)
+		return r, fmt.Errorf("%s", r.Message)
 	}
 
 	repeatPasses := cfg.Timeout > 0
@@ -87,21 +99,22 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 		if passErr != nil {
 			if errors.Is(passErr, booker.ErrInvalidToken) {
 				msg := "session expired — please log in again"
-				return Result{Status: StatusFailed, Message: msg},
-					fmt.Errorf("%s: %w", msg, passErr)
+				r := resultWithCourse(cfg, StatusFailed, msg)
+				return r, fmt.Errorf("%s: %w", r.Message, passErr)
 			}
 			if errors.Is(passErr, context.Canceled) || errors.Is(passErr, context.DeadlineExceeded) {
 				return resultForDeadline(cfg, slotsBeforeCutoff, ctx)
 			}
-			return Result{Status: StatusFailed, Message: passErr.Error()},
-				fmt.Errorf("booking pass: %w", passErr)
+			r := resultWithCourse(cfg, StatusFailed, passErr.Error())
+			return r, fmt.Errorf("booking pass: %w", passErr)
 		}
 		if success {
 			return res, nil
 		}
 		if allReserved {
 			msg := fmt.Sprintf("all tee times before %s cutoff already reserved", slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime))
-			return Result{Status: StatusFailed, Message: msg}, fmt.Errorf("%s", msg)
+			r := resultWithCourse(cfg, StatusFailed, msg)
+			return r, fmt.Errorf("%s", r.Message)
 		}
 		if !repeatPasses {
 			return noBookingResult(cfg, slotsBeforeCutoff)
@@ -119,18 +132,18 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 func resultForDeadline(cfg Config, slots []booker.TeeTimeSlot, ctx context.Context) (Result, error) {
 	_ = slots
 	if ctx.Err() == context.DeadlineExceeded {
-		r := Result{Status: StatusFailed, Message: "no slot booked"}
+		r := resultWithCourse(cfg, StatusFailed, "no slot booked")
 		return r, fmt.Errorf("timeout after %s with no booking", cfg.Timeout)
 	}
-	r := Result{Status: StatusCancelled, Message: "Run cancelled"}
+	r := resultWithCourse(cfg, StatusCancelled, "Run cancelled")
 	return r, fmt.Errorf("booking cancelled: %w", ctx.Err())
 }
 
 func noBookingResult(cfg Config, slots []booker.TeeTimeSlot) (Result, error) {
 	msg := fmt.Sprintf("no slots booked before %s cutoff (tried %d slot(s), earliest was %s)",
 		slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime), len(slots), slots[0].TeeTime)
-	r := Result{Status: StatusFailed, Message: msg}
-	return r, fmt.Errorf("%s", msg)
+	r := resultWithCourse(cfg, StatusFailed, msg)
+	return r, fmt.Errorf("%s", r.Message)
 }
 
 func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config, slots []booker.TeeTimeSlot) (success bool, result Result, allReserved bool, err error) {
@@ -189,11 +202,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			continue
 		}
 
-		if resp.Status {
-			allSeenReserved = false
-		} else {
-			allSeenReserved = false
-		}
+		allSeenReserved = false
 
 		booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 		if booked {

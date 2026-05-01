@@ -12,6 +12,9 @@ var ErrCancelNotRunning = errors.New("scheduler is not running for this account"
 // ErrPresetNotFound is returned when deleting a preset that does not exist.
 var ErrPresetNotFound = errors.New("preset not found")
 
+// ErrSkipNotEnabled is returned when skip is requested while auto-booking is disabled.
+var ErrSkipNotEnabled = errors.New("auto-booker is not enabled for this account")
+
 const (
 	DefaultCutoff        = "8:15"
 	DefaultRetryInterval = "1s"
@@ -33,6 +36,9 @@ type Service interface {
 	RequestCancelRun(userName string) error
 	ClearCancelRequested(userName string) error
 	ClearCourseOverride(userName string) error
+	RequestSkipNextRun(userName string) error
+	ClearSkipNextRun(userName string) error
+	ConsumeSkipNextRun(userName string) (bool, error)
 	DeleteByUserName(userName string) error
 }
 
@@ -64,6 +70,7 @@ type Preset struct {
 	CancelRequested bool
 	OverrideCourse  sql.NullString
 	OverrideUntil   sql.NullTime
+	SkipNextRun     bool
 }
 
 func (s *service) UpsertPreset(p Preset) error {
@@ -93,12 +100,12 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 	err := s.conn.QueryRow(`
 		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
-		       override_course, override_until
+		       override_course, override_until, skip_next_run
 		FROM booking_presets
 		WHERE user_name = $1`, userName).
 		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
-			&p.OverrideCourse, &p.OverrideUntil)
+			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -112,7 +119,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 	rows, err := s.conn.Query(`
 		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
-		       override_course, override_until
+		       override_course, override_until, skip_next_run
 		FROM booking_presets
 		WHERE enabled = true
 		ORDER BY user_name`)
@@ -127,7 +134,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 		if err := rows.Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff,
 			&p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
-			&p.OverrideCourse, &p.OverrideUntil); err != nil {
+			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun); err != nil {
 			return nil, err
 		}
 		presets = append(presets, p)
@@ -182,6 +189,57 @@ func (s *service) ClearCourseOverride(userName string) error {
 		WHERE user_name = $1`,
 		userName)
 	return err
+}
+
+// RequestSkipNextRun queues a one-shot skip for the next scheduler fire (enabled presets only; else ErrSkipNotEnabled).
+func (s *service) RequestSkipNextRun(userName string) error {
+	res, err := s.conn.Exec(`
+		UPDATE booking_presets
+		SET skip_next_run = TRUE
+		WHERE user_name = $1 AND enabled = TRUE`,
+		userName)
+	if err != nil {
+		return err
+	}
+	n, err := res.RowsAffected()
+	if err != nil {
+		return err
+	}
+	if n == 0 {
+		return ErrSkipNotEnabled
+	}
+	return nil
+}
+
+// ClearSkipNextRun clears a pending skip request.
+func (s *service) ClearSkipNextRun(userName string) error {
+	_, err := s.conn.Exec(`
+		UPDATE booking_presets
+		SET skip_next_run = FALSE
+		WHERE user_name = $1`,
+		userName)
+	return err
+}
+
+// ConsumeSkipNextRun atomically clears the skip flag and returns whether one
+// was queued. The scheduler calls this once at the start of each run; a true
+// return means the run should be skipped immediately. The WHERE predicate
+// avoids a write (and WAL churn) on the common case where no skip is queued.
+func (s *service) ConsumeSkipNextRun(userName string) (bool, error) {
+	var consumed bool
+	err := s.conn.QueryRow(`
+		UPDATE booking_presets
+		SET skip_next_run = FALSE
+		WHERE user_name = $1 AND skip_next_run = TRUE
+		RETURNING TRUE`,
+		userName).Scan(&consumed)
+	if errors.Is(err, sql.ErrNoRows) {
+		return false, nil
+	}
+	if err != nil {
+		return false, err
+	}
+	return consumed, nil
 }
 
 // OverrideState describes how a temporary override should be applied for a run:

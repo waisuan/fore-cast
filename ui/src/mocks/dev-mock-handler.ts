@@ -128,6 +128,21 @@ export async function handleDevMockRequest(req: NextRequest): Promise<Response> 
     return json({});
   }
 
+  if (segs[0] === 'preset' && segs[1] === 'skip-next') {
+    if (method === 'POST') {
+      if (!presetState.enabled) {
+        return json({ message: 'auto-booker is not enabled for this account' }, { status: 409 });
+      }
+      presetState.skip_next_run = true;
+      return json({ status: 'skip_requested' });
+    }
+    if (method === 'DELETE') {
+      presetState.skip_next_run = false;
+      return json({ status: 'skip_cleared' });
+    }
+    return json({ message: 'method not allowed' }, { status: 405 });
+  }
+
   if (segs[0] === 'slots' && method === 'GET') {
     return json(mockSlotsResponse);
   }
