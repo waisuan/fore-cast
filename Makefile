@@ -8,9 +8,10 @@ CLEANUP_BINARY := bin/fore-cast-cleanup
 CMD_WEB := ./cmd/web
 CMD_SCHEDULER := ./cmd/scheduler
 CMD_CLEANUP := ./cmd/cleanup
+CMD_CREATEUSER := ./cmd/createuser
 MIGRATE := go run -tags 'postgres' github.com/golang-migrate/migrate/v4/cmd/migrate@latest
 
-.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down bootstrap-admin ui ui-mock ui-mock-admin ui-install ui-build ui-lint e2e e2e-install
+.PHONY: build-web build-scheduler build-cleanup build-all web scheduler scheduler-dry cleanup fmt lint test check generate db-up db-down db-reset db-migrate db-migrate-down create-user ui ui-mock ui-mock-admin ui-install ui-build ui-lint e2e e2e-install
 build-web:
 	@mkdir -p bin
 	go build -o $(WEB_BINARY) $(CMD_WEB)
@@ -25,9 +26,11 @@ build-cleanup:
 
 build-all: build-web build-scheduler build-cleanup
 
-# Run the web server (loads .env.development via APP_ENV)
+# Run the web server (loads .env.development via APP_ENV). Dry-run is on by
+# default so local usage never hits the real club API; override with
+# BOOKER_DRY_RUN=false make web for a real-backend smoke test.
 web:
-	APP_ENV=development go run $(CMD_WEB)
+	BOOKER_DRY_RUN=$(or $(BOOKER_DRY_RUN),true) APP_ENV=development go run $(CMD_WEB)
 
 # Run the scheduler (loads .env.development via APP_ENV)
 scheduler:
@@ -78,6 +81,14 @@ db-migrate:
 
 db-migrate-down:
 	$(MIGRATE) -path migrations -database "$(DATABASE_URL)" down 1
+
+# Seed or update a local test account. ROLE defaults to NON_ADMIN.
+#   make create-user USER=alice PASS=secret
+#   make create-user USER=admin PASS=admin ROLE=ADMIN
+create-user:
+	@test -n "$(USER)" || (echo "USER is required (e.g. make create-user USER=alice PASS=secret)" && exit 2)
+	@test -n "$(PASS)" || (echo "PASS is required (e.g. make create-user USER=alice PASS=secret)" && exit 2)
+	APP_ENV=development go run $(CMD_CREATEUSER) -user $(USER) -pass $(PASS) -role $(or $(ROLE),NON_ADMIN)
 
 # UI: install deps, dev server, build, lint
 ui-install:
