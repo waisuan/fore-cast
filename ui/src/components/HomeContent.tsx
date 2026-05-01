@@ -16,6 +16,7 @@ import {
 import { useToast } from '@/contexts/ToastContext';
 import SchedulerRunningBanner from './SchedulerRunningBanner';
 import CourseOverrideBanner from './CourseOverrideBanner';
+import Spinner from './Spinner';
 
 interface PresetStatus {
   enabled: boolean;
@@ -162,7 +163,7 @@ export default function HomeContent() {
   }, [schedulerRunning, load]);
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-4">
       <p className="text-sm text-gray-600 dark:text-gray-400">
         Having trouble loading slots or your bookings? Try logging out (menu above) and signing in again to refresh your session.
       </p>
@@ -171,7 +172,7 @@ export default function HomeContent() {
       )}
       {upcoming && (
         <div
-          className={`rounded-lg border px-4 py-3 text-sm ${
+          className={`flex flex-col gap-3 rounded-lg border px-4 py-3 text-sm sm:flex-row sm:items-center sm:justify-between ${
             upcoming.skipped
               ? 'border-gray-300 bg-gray-50 text-gray-700 dark:border-gray-700 dark:bg-gray-800/60 dark:text-gray-300'
               : 'border-blue-200 bg-blue-50 text-blue-900 dark:border-blue-900 dark:bg-blue-950/40 dark:text-blue-100'
@@ -179,45 +180,49 @@ export default function HomeContent() {
         >
           {upcoming.skipped ? (
             <>
-              <p>
-                The upcoming auto-booking run is{' '}
-                <strong className="font-semibold">skipped</strong>.
-              </p>
-              <p className="mt-1">
-                Auto-booker resumes <strong className="font-semibold">{upcoming.fireLabel}</strong>{' '}
-                at {SCHEDULER_FIRE_LABEL_MY} (Malaysia) and will book{' '}
-                <strong className="font-semibold">{upcoming.bookingLabel}</strong> on{' '}
-                <strong className="font-semibold">{upcoming.course}</strong>
-                {upcoming.isOverride && ' (override)'}.
-              </p>
+              <div>
+                <p>
+                  The upcoming auto-booking run is{' '}
+                  <strong className="font-semibold">skipped</strong>.
+                </p>
+                <p className="mt-1 text-xs opacity-80">
+                  Auto-booker resumes <strong className="font-semibold">{upcoming.fireLabel}</strong>{' '}
+                  at {SCHEDULER_FIRE_LABEL_MY} (Malaysia) and will book{' '}
+                  <strong className="font-semibold">{upcoming.bookingLabel}</strong> on{' '}
+                  <strong className="font-semibold">{upcoming.course}</strong>
+                  {upcoming.isOverride && ' (override)'}.
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => void toggleSkipNextRun(false)}
                 disabled={skipBusy}
                 aria-busy={skipBusy}
-                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60"
+                className="shrink-0 rounded border border-gray-500 bg-white px-3 py-1.5 font-medium text-gray-800 hover:bg-gray-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-gray-400 dark:bg-gray-950/50 dark:text-gray-200 dark:hover:bg-gray-900/50"
               >
-                Undo skip
+                {skipBusy ? <Spinner className="h-4 w-4" /> : 'Undo skip'}
               </button>
             </>
           ) : (
             <>
-              <p>
-                Next auto-booking: <strong className="font-semibold">{upcoming.bookingLabel}</strong>{' '}
-                on <strong className="font-semibold">{upcoming.course}</strong>
-                {upcoming.isOverride && ' (override)'}.
-              </p>
-              <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
-                Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
-              </p>
+              <div>
+                <p>
+                  Next auto-booking: <strong className="font-semibold">{upcoming.bookingLabel}</strong>{' '}
+                  on <strong className="font-semibold">{upcoming.course}</strong>
+                  {upcoming.isOverride && ' (override)'}.
+                </p>
+                <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
+                  Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
+                </p>
+              </div>
               <button
                 type="button"
                 onClick={() => void toggleSkipNextRun(true)}
                 disabled={skipBusy}
                 aria-busy={skipBusy}
-                className="mt-2 text-xs font-medium underline underline-offset-2 hover:no-underline disabled:opacity-60"
+                className="shrink-0 rounded border border-blue-600 bg-white px-3 py-1.5 font-medium text-blue-800 hover:bg-blue-100 disabled:cursor-not-allowed disabled:opacity-50 dark:border-blue-400 dark:bg-blue-950/50 dark:text-blue-200 dark:hover:bg-blue-900/50"
               >
-                Skip next run
+                {skipBusy ? <Spinner className="h-4 w-4" /> : 'Skip next run'}
               </button>
             </>
           )}
