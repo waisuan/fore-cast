@@ -58,11 +58,11 @@ type PresetResponse struct {
 // PresetRequest is the JSON body for PUT /api/v1/preset. See preset.Preset for
 // the OverrideCourse / OverrideUntil semantics; OverrideUntil must be RFC3339.
 type PresetRequest struct {
-	Course              string  `json:"course"`
-	Cutoff              string  `json:"cutoff"`
-	RetryInterval       string  `json:"retry_interval"`
-	Timeout             string  `json:"timeout"`
-	EnableNotifications *bool   `json:"enable_notifications"`
+	Course              string   `json:"course"`
+	Cutoff              string   `json:"cutoff"`
+	RetryInterval       string   `json:"retry_interval"`
+	Timeout             string   `json:"timeout"`
+	EnableNotifications *bool    `json:"enable_notifications"`
 	Enabled             bool     `json:"enabled"`
 	OverrideCourse      string   `json:"override_course"`
 	OverrideUntil       *string  `json:"override_until"`
@@ -176,12 +176,12 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 	}
 
 	p := preset.Preset{
-		UserName:        u.UserName,
-		Course:          sql.NullString{String: req.Course, Valid: req.Course != ""},
-		Cutoff:          req.Cutoff,
-		RetryInterval:   req.RetryInterval,
-		Timeout:         req.Timeout,
-		NtfyTopic:       ntfyTopic,
+		UserName:       u.UserName,
+		Course:         sql.NullString{String: req.Course, Valid: req.Course != ""},
+		Cutoff:         req.Cutoff,
+		RetryInterval:  req.RetryInterval,
+		Timeout:        req.Timeout,
+		NtfyTopic:      ntfyTopic,
 		Enabled:        req.Enabled,
 		OverrideCourse: overrideCourse,
 		OverrideUntil:  overrideUntil,

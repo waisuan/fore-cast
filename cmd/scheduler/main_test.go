@@ -12,8 +12,9 @@ import (
 )
 
 // Concrete dates whose weekdays we depend on in tests:
-//   2026/04/29 → Wednesday (date-based fallback yields PLC)
-//   2026/05/02 → Saturday
+//
+//	2026/04/29 → Wednesday (date-based fallback yields PLC)
+//	2026/05/02 → Saturday
 const (
 	wednesdayTxnDate = "2026/04/29"
 	saturdayTxnDate  = "2026/05/02"
