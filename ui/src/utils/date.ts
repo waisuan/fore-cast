@@ -209,6 +209,45 @@ export function courseForYmd(ymd: string): 'BRC' | 'PLC' {
 }
 
 /**
+ * The opposite club course. Mirrors `slotutil.OtherCourse` on the Go backend.
+ */
+export function otherCourse(course: 'BRC' | 'PLC'): 'BRC' | 'PLC' {
+  return course === 'BRC' ? 'PLC' : 'BRC';
+}
+
+/**
+ * Canonical 3-letter weekday codes ordered Sun..Sat so the array index matches
+ * JavaScript's `Date#getUTCDay()` (and Go's `time.Weekday` int value). The
+ * Sun-first ordering is a JS Date convention, not a UI preference.
+ */
+export const WEEKDAY_CODES_BY_DAY = [
+  'SUN',
+  'MON',
+  'TUE',
+  'WED',
+  'THU',
+  'FRI',
+  'SAT',
+] as const;
+export type WeekdayCode = (typeof WEEKDAY_CODES_BY_DAY)[number];
+
+/**
+ * Returns the canonical weekday code (e.g. "MON") for a YYYY-MM-DD calendar
+ * date, or null when the input doesn't parse. Used to gate "alt course"
+ * scheduling on the same weekday set the backend evaluates.
+ */
+export function weekdayCodeForYmd(ymd: string): WeekdayCode | null {
+  const seg = ymd.split('-').map(Number);
+  if (seg.length !== 3 || seg.some((n) => Number.isNaN(n))) return null;
+  const [y, m, d] = seg;
+  const dt = new Date(Date.UTC(y, m - 1, d));
+  // `Date.UTC` normalizes overflow, so `getUTCDay()` is 0..6 for any finite
+  // timestamp; guard the rare invalid-Date case (mirrors `formatWeekdayDateMY`).
+  if (isNaN(dt.getTime())) return null;
+  return WEEKDAY_CODES_BY_DAY[dt.getUTCDay()];
+}
+
+/**
  * Format a YYYY-MM-DD date with weekday and month abbreviation (no year),
  * e.g. "Mon, 6 May". Suitable for inline labels.
  */

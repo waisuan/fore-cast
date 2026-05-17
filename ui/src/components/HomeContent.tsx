@@ -9,14 +9,24 @@ import {
   formatDateTimeMY,
   formatWeekdayDateMY,
   nextSchedulerRunMY,
+  otherCourse,
   SCHEDULER_FIRE_HOUR_MY,
   SCHEDULER_FIRE_LABEL_MY,
   SCHEDULER_FIRE_MINUTE_MY,
+  weekdayCodeForYmd,
 } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import SchedulerRunningBanner from './SchedulerRunningBanner';
 import CourseOverrideBanner from './CourseOverrideBanner';
 import Spinner from './Spinner';
+
+function AltCourseSubline({ course, className }: { course: string; className: string }) {
+  return (
+    <p className={className}>
+      Also trying <strong className="font-semibold">{course}</strong> in parallel.
+    </p>
+  );
+}
 
 interface PresetStatus {
   enabled: boolean;
@@ -26,6 +36,7 @@ interface PresetStatus {
   override_course: string;
   override_until: string | null;
   skip_next_run: boolean;
+  alt_course_days: string[];
 }
 
 export default function HomeContent() {
@@ -48,6 +59,7 @@ export default function HomeContent() {
           override_course: res.override_course ?? '',
           override_until: res.override_until ?? null,
           skip_next_run: res.skip_next_run ?? false,
+          alt_course_days: Array.isArray(res.alt_course_days) ? res.alt_course_days : [],
         });
       } catch (e) {
         setStatus(null);
@@ -112,6 +124,7 @@ export default function HomeContent() {
     override_course,
     override_until,
     skip_next_run,
+    alt_course_days = [],
   } = status ?? {};
   const isRecent = last_run_at
     ? Date.now() - new Date(last_run_at).getTime() < 23 * 60 * 60 * 1000
@@ -142,17 +155,37 @@ export default function HomeContent() {
     const fireHH = String(SCHEDULER_FIRE_HOUR_MY).padStart(2, '0');
     const fireMM = String(SCHEDULER_FIRE_MINUTE_MY).padStart(2, '0');
     const fireInstant = new Date(`${fireYmd}T${fireHH}:${fireMM}:00+08:00`).getTime();
+    // Inclusive boundary mirrors Go's `!now.After(until)` in
+    // `preset.ResolveOverride` — the override is still active when `until`
+    // lands exactly on the fire instant.
     const overrideAppliesToNextRun =
-      !!override_course && (!override_until || new Date(override_until).getTime() > fireInstant);
+      !!override_course && (!override_until || new Date(override_until).getTime() >= fireInstant);
+    const primaryCourse = courseForYmd(bookingYmd);
+    // Alt course preview mirrors `resolveCoursesForRun` on the backend: never
+    // when an override is active for the next fire, otherwise only when the
+    // booking date's weekday is opted in.
+    const bookingWeekday = weekdayCodeForYmd(bookingYmd);
+    const altCourse =
+      !overrideAppliesToNextRun && bookingWeekday && alt_course_days.includes(bookingWeekday)
+        ? otherCourse(primaryCourse)
+        : null;
     return {
       bookingLabel: formatWeekdayDateMY(bookingYmd),
       fireLabel: formatWeekdayDateMY(fireYmd),
-      course: overrideAppliesToNextRun && override_course ? override_course : courseForYmd(bookingYmd),
+      course: overrideAppliesToNextRun && override_course ? override_course : primaryCourse,
+      altCourse,
       whenLabel: next.tonight ? 'tonight' : 'tomorrow night',
       isOverride: overrideAppliesToNextRun,
       skipped,
     };
-  }, [enabled, schedulerRunning, override_course, override_until, skip_next_run]);
+  }, [
+    enabled,
+    schedulerRunning,
+    override_course,
+    override_until,
+    skip_next_run,
+    alt_course_days,
+  ]);
 
   useEffect(() => {
     if (!schedulerRunning) return;
@@ -192,6 +225,12 @@ export default function HomeContent() {
                   <strong className="font-semibold">{upcoming.course}</strong>
                   {upcoming.isOverride && ' (override)'}.
                 </p>
+                {upcoming.altCourse && (
+                  <AltCourseSubline
+                    course={upcoming.altCourse}
+                    className="mt-1 text-xs opacity-80"
+                  />
+                )}
               </div>
               <button
                 type="button"
@@ -214,6 +253,12 @@ export default function HomeContent() {
                 <p className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70">
                   Scheduler runs {upcoming.whenLabel} at {SCHEDULER_FIRE_LABEL_MY} (Malaysia).
                 </p>
+                {upcoming.altCourse && (
+                  <AltCourseSubline
+                    course={upcoming.altCourse}
+                    className="mt-1 text-xs text-blue-800/80 dark:text-blue-200/70"
+                  />
+                )}
               </div>
               <button
                 type="button"

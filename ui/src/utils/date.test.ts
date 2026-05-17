@@ -12,9 +12,11 @@ import {
   isoToYmdMalaysia,
   MY_TIMEZONE,
   nextSchedulerRunMY,
+  otherCourse,
   todayIso,
   todayIsoMalaysia,
   toApiDate,
+  weekdayCodeForYmd,
 } from './date';
 
 describe('toApiDate', () => {
@@ -197,5 +199,38 @@ describe('addCalendarDaysYmd', () => {
 
   it('returns original string for invalid input', () => {
     expect(addCalendarDaysYmd('not-a-date', 1)).toBe('not-a-date');
+  });
+});
+
+describe('otherCourse', () => {
+  it('swaps BRC and PLC', () => {
+    expect(otherCourse('BRC')).toBe('PLC');
+    expect(otherCourse('PLC')).toBe('BRC');
+  });
+});
+
+describe('weekdayCodeForYmd', () => {
+  it.each([
+    ['2026-04-26', 'SUN'],
+    ['2026-04-27', 'MON'],
+    ['2026-04-28', 'TUE'],
+    ['2026-04-29', 'WED'],
+    ['2026-04-30', 'THU'],
+    ['2026-05-01', 'FRI'],
+    ['2026-05-02', 'SAT'],
+  ])('maps %s -> %s', (ymd, want) => {
+    expect(weekdayCodeForYmd(ymd)).toBe(want);
+  });
+
+  it('returns null for malformed input', () => {
+    expect(weekdayCodeForYmd('not-a-date')).toBeNull();
+    expect(weekdayCodeForYmd('')).toBeNull();
+  });
+
+  it('returns null when the parsed Date overflows JS Date range', () => {
+    // Year > ±275760 AD exceeds JS Date's representable range, so Date.UTC
+    // returns NaN. The seg-parses-as-finite-numbers check earlier in the
+    // function does not catch this — the explicit isNaN guard does.
+    expect(weekdayCodeForYmd('300000-01-01')).toBeNull();
   });
 });

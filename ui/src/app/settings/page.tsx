@@ -12,6 +12,8 @@ import {
   nextSchedulerRunMY,
   SCHEDULER_FIRE_LABEL_MY,
   todayIsoMalaysia,
+  WEEKDAY_CODES_BY_DAY,
+  type WeekdayCode,
 } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
@@ -70,17 +72,20 @@ type OverridePayload = { course: string; until: string | null };
 
 const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
 
-const WEEKDAYS = [
-  { code: 'SUN', label: 'S', full: 'Sunday' },
-  { code: 'MON', label: 'M', full: 'Monday' },
-  { code: 'TUE', label: 'T', full: 'Tuesday' },
-  { code: 'WED', label: 'W', full: 'Wednesday' },
-  { code: 'THU', label: 'T', full: 'Thursday' },
-  { code: 'FRI', label: 'F', full: 'Friday' },
-  { code: 'SAT', label: 'S', full: 'Saturday' },
-] as const;
-type WeekdayCode = (typeof WEEKDAYS)[number]['code'];
-const WEEKDAY_CODES: ReadonlySet<string> = new Set(WEEKDAYS.map((d) => d.code));
+// UI-only metadata for the dense pill row. Codes/order come from `date.ts`
+// (Sun..Sat to match `Date#getUTCDay()` and Go's `time.Weekday`) so the
+// canonical weekday set lives in one place; only the single-letter pill
+// labels and accessible full names are owned by this page.
+const WEEKDAY_PILL_META: Readonly<Record<WeekdayCode, { label: string; full: string }>> = {
+  SUN: { label: 'S', full: 'Sunday' },
+  MON: { label: 'M', full: 'Monday' },
+  TUE: { label: 'T', full: 'Tuesday' },
+  WED: { label: 'W', full: 'Wednesday' },
+  THU: { label: 'T', full: 'Thursday' },
+  FRI: { label: 'F', full: 'Friday' },
+  SAT: { label: 'S', full: 'Saturday' },
+};
+const WEEKDAY_CODES: ReadonlySet<string> = new Set(WEEKDAY_CODES_BY_DAY);
 
 function buildOverridePayload(
   mode: OverrideMode,
@@ -484,20 +489,19 @@ export default function SettingsPage() {
             override is active</strong> (the override wins).
           </p>
           <div className="flex flex-wrap gap-1.5" role="group" aria-label="Alt-course weekdays">
-            {WEEKDAYS.map((d) => {
-              const active = altCourseDays.includes(d.code);
+            {WEEKDAY_CODES_BY_DAY.map((code) => {
+              const meta = WEEKDAY_PILL_META[code];
+              const active = altCourseDays.includes(code);
               return (
                 <button
-                  key={d.code}
+                  key={code}
                   type="button"
                   role="checkbox"
                   aria-checked={active}
-                  aria-label={d.full}
+                  aria-label={meta.full}
                   onClick={() =>
                     setAltCourseDays((prev) =>
-                      prev.includes(d.code)
-                        ? prev.filter((x) => x !== d.code)
-                        : [...prev, d.code],
+                      prev.includes(code) ? prev.filter((x) => x !== code) : [...prev, code],
                     )
                   }
                   className={
@@ -507,7 +511,7 @@ export default function SettingsPage() {
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600')
                   }
                 >
-                  {d.label}
+                  {meta.label}
                 </button>
               );
             })}
