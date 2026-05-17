@@ -146,6 +146,119 @@ func (s *SlotutilSuite) TestDateOneWeekAhead() {
 	s.Assert().Equal(expected, got)
 }
 
+func (s *SlotutilSuite) TestOtherCourse() {
+	tests := []struct {
+		in, want, desc string
+	}{
+		{booker.CourseBRC, booker.CoursePLC, "BRC -> PLC"},
+		{booker.CoursePLC, booker.CourseBRC, "PLC -> BRC"},
+		{"brc", booker.CoursePLC, "lower-case BRC normalized"},
+		{" PLC ", booker.CourseBRC, "padded PLC normalized"},
+		{"", "", "empty returns empty"},
+		{"FOO", "", "unknown returns empty"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.desc, func() {
+			s.Assert().Equal(tt.want, OtherCourse(tt.in))
+		})
+	}
+}
+
+func (s *SlotutilSuite) TestWeekdayCode() {
+	s.Assert().Equal("MON", WeekdayCode(time.Monday))
+	s.Assert().Equal("SUN", WeekdayCode(time.Sunday))
+	s.Assert().Equal("SAT", WeekdayCode(time.Saturday))
+	s.Assert().Equal("", WeekdayCode(time.Weekday(-1)), "out-of-range below Sunday")
+	s.Assert().Equal("", WeekdayCode(time.Weekday(7)), "out-of-range above Saturday")
+}
+
+func (s *SlotutilSuite) TestParseWeekdayCodes() {
+	tests := []struct {
+		in      string
+		want    map[time.Weekday]struct{}
+		wantErr bool
+		desc    string
+	}{
+		{"", nil, false, "empty -> nil"},
+		{"   ", nil, false, "whitespace -> nil"},
+		{"MON", map[time.Weekday]struct{}{time.Monday: {}}, false, "single day"},
+		{
+			"MON,WED,SAT",
+			map[time.Weekday]struct{}{time.Monday: {}, time.Wednesday: {}, time.Saturday: {}},
+			false,
+			"multi day",
+		},
+		{
+			"mon, wed ,SAT",
+			map[time.Weekday]struct{}{time.Monday: {}, time.Wednesday: {}, time.Saturday: {}},
+			false,
+			"casing + whitespace tolerated",
+		},
+		{
+			"MON,MON,TUE",
+			map[time.Weekday]struct{}{time.Monday: {}, time.Tuesday: {}},
+			false,
+			"duplicates deduped",
+		},
+		{
+			"MON,",
+			map[time.Weekday]struct{}{time.Monday: {}},
+			false,
+			"trailing comma -> empty token skipped",
+		},
+		{
+			"MON, ,SAT",
+			map[time.Weekday]struct{}{time.Monday: {}, time.Saturday: {}},
+			false,
+			"whitespace-only middle token skipped",
+		},
+		{"FOO", nil, true, "unknown code rejected"},
+		{"MON,XYZ", nil, true, "one bad code rejects whole list"},
+	}
+	for _, tt := range tests {
+		s.Run(tt.desc, func() {
+			got, err := ParseWeekdayCodes(tt.in)
+			if tt.wantErr {
+				s.Assert().Error(err)
+				return
+			}
+			s.Require().NoError(err)
+			s.Assert().Equal(tt.want, got)
+		})
+	}
+}
+
+func (s *SlotutilSuite) TestCanonicalWeekdayCodes() {
+	s.Assert().Nil(CanonicalWeekdayCodes(""), "empty -> nil")
+	s.Assert().Nil(CanonicalWeekdayCodes("   "), "whitespace -> nil")
+	s.Assert().Nil(CanonicalWeekdayCodes("FOO"), "malformed token -> nil (parse error)")
+	s.Assert().Equal([]string{"MON", "SAT"}, CanonicalWeekdayCodes("SAT,MON"),
+		"unordered input round-trips to canonical Mon..Sun")
+	s.Assert().Equal([]string{"MON", "WED"}, CanonicalWeekdayCodes("mon , WED"),
+		"casing + whitespace tolerated, canonical output")
+}
+
+func (s *SlotutilSuite) TestSerializeWeekdaySet() {
+	s.Assert().Equal("", SerializeWeekdaySet(nil))
+	s.Assert().Equal("", SerializeWeekdaySet(map[time.Weekday]struct{}{}))
+	s.Assert().Equal(
+		"MON,WED,SAT",
+		SerializeWeekdaySet(map[time.Weekday]struct{}{
+			time.Saturday:  {},
+			time.Monday:    {},
+			time.Wednesday: {},
+		}),
+		"output is Mon..Sun ordered regardless of insert order",
+	)
+	s.Assert().Equal(
+		"MON,TUE,WED,THU,FRI,SAT,SUN",
+		SerializeWeekdaySet(map[time.Weekday]struct{}{
+			time.Sunday: {}, time.Monday: {}, time.Tuesday: {}, time.Wednesday: {},
+			time.Thursday: {}, time.Friday: {}, time.Saturday: {},
+		}),
+	)
+}
+
 func TestSlotutilSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(SlotutilSuite))

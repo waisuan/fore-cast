@@ -47,6 +47,12 @@ type PresetResponse struct {
 	OverrideCourse string  `json:"override_course"`
 	OverrideUntil  *string `json:"override_until"`
 	SkipNextRun    bool    `json:"skip_next_run"`
+	// AltCourseDays is the list of weekday codes (e.g. ["MON","SAT"]) on which
+	// the scheduler will also try to book on the OPPOSITE course in parallel
+	// with the primary. Empty disables the feature; suppressed when a course
+	// override is active. Omitted from the JSON response when unset (matches
+	// the convention used by OverrideUntil / LastRunAt).
+	AltCourseDays []string `json:"alt_course_days,omitempty"`
 }
 
 // PresetRequest is the JSON body for PUT /api/v1/preset. See preset.Preset for
@@ -57,9 +63,10 @@ type PresetRequest struct {
 	RetryInterval       string  `json:"retry_interval"`
 	Timeout             string  `json:"timeout"`
 	EnableNotifications *bool   `json:"enable_notifications"`
-	Enabled             bool    `json:"enabled"`
-	OverrideCourse      string  `json:"override_course"`
-	OverrideUntil       *string `json:"override_until"`
+	Enabled             bool     `json:"enabled"`
+	OverrideCourse      string   `json:"override_course"`
+	OverrideUntil       *string  `json:"override_until"`
+	AltCourseDays       []string `json:"alt_course_days"`
 }
 
 // GetPreset handles GET /api/v1/preset.
@@ -118,6 +125,12 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 			}
 		}
 		resp.SkipNextRun = existing.SkipNextRun
+		if existing.AltCourseDays.Valid {
+			// Re-validate on read: writes go through SerializeWeekdaySet so
+			// values are canonical, but defending against manual DB edits /
+			// future schema drift means non-UI clients never see junk tokens.
+			resp.AltCourseDays = slotutil.CanonicalWeekdayCodes(existing.AltCourseDays.String)
+		}
 	}
 
 	w.Header().Set("Content-Type", "application/json")
@@ -156,16 +169,23 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
+	altCourseDays, err := parseAltCourseDays(req.AltCourseDays)
+	if err != nil {
+		http.Error(w, err.Error(), http.StatusBadRequest)
+		return
+	}
+
 	p := preset.Preset{
-		UserName:       u.UserName,
-		Course:         sql.NullString{String: req.Course, Valid: req.Course != ""},
-		Cutoff:         req.Cutoff,
-		RetryInterval:  req.RetryInterval,
-		Timeout:        req.Timeout,
-		NtfyTopic:      ntfyTopic,
+		UserName:        u.UserName,
+		Course:          sql.NullString{String: req.Course, Valid: req.Course != ""},
+		Cutoff:          req.Cutoff,
+		RetryInterval:   req.RetryInterval,
+		Timeout:         req.Timeout,
+		NtfyTopic:       ntfyTopic,
 		Enabled:        req.Enabled,
 		OverrideCourse: overrideCourse,
 		OverrideUntil:  overrideUntil,
+		AltCourseDays:  altCourseDays,
 	}
 	if p.Cutoff == "" {
 		p.Cutoff = preset.DefaultCutoff
@@ -255,7 +275,7 @@ func (h *PresetHandler) CancelRun(w http.ResponseWriter, r *http.Request) {
 // DB fields. Empty course clears the override. A non-empty course must be a
 // known club course; a non-empty until must be RFC3339 and in the future.
 func parseOverride(courseRaw string, untilRaw *string) (sql.NullString, sql.NullTime, error) {
-	course := strings.TrimSpace(strings.ToUpper(courseRaw))
+	course := slotutil.NormalizeCourseCode(courseRaw)
 	if course == "" {
 		return sql.NullString{}, sql.NullTime{}, nil
 	}
@@ -274,6 +294,32 @@ func parseOverride(courseRaw string, untilRaw *string) (sql.NullString, sql.Null
 		return sql.NullString{}, sql.NullTime{}, fmt.Errorf("override_until must be in the future")
 	}
 	return courseNS, sql.NullTime{Time: t, Valid: true}, nil
+}
+
+// maxAltCourseDaysEntries caps the number of request entries we'll accept.
+// The natural upper bound is 7 (Mon..Sun); a generous cap leaves room for
+// casing/whitespace variants while rejecting nonsense oversized arrays
+// before we Join+Parse them.
+const maxAltCourseDaysEntries = 32
+
+// parseAltCourseDays validates the requested alt-course weekday list and
+// returns its canonical comma-separated storage form. Empty / nil disables the
+// feature (NULL in DB). Unknown weekday codes are rejected.
+func parseAltCourseDays(raw []string) (sql.NullString, error) {
+	if len(raw) == 0 {
+		return sql.NullString{}, nil
+	}
+	if len(raw) > maxAltCourseDaysEntries {
+		return sql.NullString{}, fmt.Errorf("alt_course_days has too many entries (got %d, max %d)", len(raw), maxAltCourseDaysEntries)
+	}
+	set, err := slotutil.ParseWeekdayCodes(strings.Join(raw, ","))
+	if err != nil {
+		return sql.NullString{}, err
+	}
+	if len(set) == 0 {
+		return sql.NullString{}, nil
+	}
+	return sql.NullString{String: slotutil.SerializeWeekdaySet(set), Valid: true}, nil
 }
 
 // resolveNtfyTopic determines the ntfy topic based on the user's notification

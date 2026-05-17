@@ -491,6 +491,82 @@ func (s *PresetHandlerSuite) TestGetPreset_OverrideActive_Surfaced() {
 	s.Require().NotNil(resp.OverrideUntil)
 }
 
+// --- Alt-course days ---
+
+func (s *PresetHandlerSuite) TestSavePreset_AltCourseDays_Persists() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().True(p.AltCourseDays.Valid)
+			s.Assert().Equal("MON,WED,SAT", p.AltCourseDays.String, "stored Mon..Sun ordered")
+			return nil
+		})
+
+	body, _ := json.Marshal(PresetRequest{AltCourseDays: []string{"sat", "mon", "WED"}})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_AltCourseDays_Empty_ClearsField() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+	s.mockSvc.EXPECT().
+		UpsertPreset(gomock.Any()).
+		DoAndReturn(func(p preset.Preset) error {
+			s.Assert().False(p.AltCourseDays.Valid)
+			return nil
+		})
+
+	body, _ := json.Marshal(PresetRequest{AltCourseDays: []string{}})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_AltCourseDays_Invalid_BadRequest() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+
+	body, _ := json.Marshal(PresetRequest{AltCourseDays: []string{"MON", "FOO"}})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestGetPreset_AltCourseDays_Surfaced() {
+	s.mockSvc.EXPECT().
+		GetPreset("u").
+		Return(&preset.Preset{
+			UserName:      "u",
+			Cutoff:        "8:15",
+			RetryInterval: "1s",
+			Timeout:       "10m",
+			AltCourseDays: sql.NullString{String: "MON,SAT", Valid: true},
+		}, nil)
+
+	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.GetPreset(rec, req)
+
+	s.Require().Equal(http.StatusOK, rec.Code)
+	var resp PresetResponse
+	s.Require().NoError(json.NewDecoder(rec.Body).Decode(&resp))
+	s.Assert().Equal([]string{"MON", "SAT"}, resp.AltCourseDays)
+}
+
 func (s *PresetHandlerSuite) TestGetPreset_OverrideExpired_Hidden() {
 	past := time.Now().Add(-time.Hour).UTC()
 	s.mockSvc.EXPECT().

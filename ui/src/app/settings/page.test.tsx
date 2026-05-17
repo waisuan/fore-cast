@@ -75,6 +75,7 @@ const presetPayload = {
   last_run_at: null as string | null,
   override_course: '',
   override_until: null as string | null,
+  alt_course_days: [] as string[],
 };
 
 function renderSettings() {
@@ -210,5 +211,95 @@ describe('SettingsPage', () => {
       expect(screen.getByLabelText(/until a specific date/i)).toBeChecked();
     });
     expect(screen.getByLabelText(/use this course instead/i)).toHaveValue('PLC');
+  });
+
+  it('persists the selected alt-course weekdays on save', async () => {
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /saturday/i })).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /saturday/i }));
+    fireEvent.click(screen.getByRole('checkbox', { name: /sunday/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith(
+        '/api/v1/preset',
+        expect.objectContaining({ alt_course_days: ['SAT', 'SUN'] }),
+      );
+    });
+  });
+
+  it('toggling a day off removes it from the persisted set', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      ...presetPayload,
+      alt_course_days: ['SAT', 'SUN'],
+    });
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /saturday/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+
+    fireEvent.click(screen.getByRole('checkbox', { name: /saturday/i }));
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(api.put).toHaveBeenCalledWith(
+        '/api/v1/preset',
+        expect.objectContaining({ alt_course_days: ['SUN'] }),
+      );
+    });
+  });
+
+  it('hydrates saved alt-course days from the GET payload', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      ...presetPayload,
+      alt_course_days: ['MON', 'SAT'],
+    });
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /monday/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+    expect(screen.getByRole('checkbox', { name: /saturday/i })).toHaveAttribute(
+      'aria-checked',
+      'true',
+    );
+    expect(screen.getByRole('checkbox', { name: /tuesday/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+  });
+
+  it('hydration ignores unknown weekday codes in the GET payload', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      ...presetPayload,
+      alt_course_days: ['MON', 'BAD_CODE', 'XYZ'],
+    });
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByRole('checkbox', { name: /monday/i })).toHaveAttribute(
+        'aria-checked',
+        'true',
+      );
+    });
+    expect(screen.getByRole('checkbox', { name: /tuesday/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
+    expect(screen.getByRole('checkbox', { name: /saturday/i })).toHaveAttribute(
+      'aria-checked',
+      'false',
+    );
   });
 });

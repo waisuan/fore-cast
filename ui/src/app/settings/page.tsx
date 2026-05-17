@@ -61,6 +61,7 @@ interface PresetData {
   last_run_at: string | null;
   override_course: string;
   override_until: string | null;
+  alt_course_days: string[] | null;
 }
 
 type OverrideMode = 'none' | 'once' | 'days7' | 'until';
@@ -68,6 +69,18 @@ type OverrideMode = 'none' | 'once' | 'days7' | 'until';
 type OverridePayload = { course: string; until: string | null };
 
 const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
+
+const WEEKDAYS = [
+  { code: 'SUN', label: 'S', full: 'Sunday' },
+  { code: 'MON', label: 'M', full: 'Monday' },
+  { code: 'TUE', label: 'T', full: 'Tuesday' },
+  { code: 'WED', label: 'W', full: 'Wednesday' },
+  { code: 'THU', label: 'T', full: 'Thursday' },
+  { code: 'FRI', label: 'F', full: 'Friday' },
+  { code: 'SAT', label: 'S', full: 'Saturday' },
+] as const;
+type WeekdayCode = (typeof WEEKDAYS)[number]['code'];
+const WEEKDAY_CODES: ReadonlySet<string> = new Set(WEEKDAYS.map((d) => d.code));
 
 function buildOverridePayload(
   mode: OverrideMode,
@@ -189,6 +202,7 @@ export default function SettingsPage() {
   const [overrideMode, setOverrideMode] = useState<OverrideMode>('none');
   const [overrideCourse, setOverrideCourse] = useState<string>('');
   const [overrideUntilYmd, setOverrideUntilYmd] = useState<string>('');
+  const [altCourseDays, setAltCourseDays] = useState<WeekdayCode[]>([]);
 
   const load = useCallback(async (opts?: { silent?: boolean }) => {
     const silent = opts?.silent ?? false;
@@ -216,6 +230,10 @@ export default function SettingsPage() {
         setOverrideMode('until');
         setOverrideUntilYmd(isoToYmdMalaysia(ou));
       }
+      const hydrated = (res.alt_course_days ?? []).filter(
+        (d): d is WeekdayCode => WEEKDAY_CODES.has(d),
+      );
+      setAltCourseDays(hydrated);
     } catch (e) {
       if (!silent) {
         addToast(e instanceof ApiError ? e.message : 'Failed to load settings', 'error');
@@ -314,6 +332,7 @@ export default function SettingsPage() {
         enabled,
         override_course: overridePayload.course,
         override_until: overridePayload.until,
+        alt_course_days: altCourseDays,
       });
       addToast('Settings saved', 'success');
       await load();
@@ -447,6 +466,53 @@ export default function SettingsPage() {
             <p className="text-xs text-amber-800/80 dark:text-amber-200/70">{overrideSummary}</p>
           </div>
         </div>
+        <fieldset
+          aria-describedby="altCourseDaysHelp"
+          className="rounded-lg border border-gray-200 bg-gray-50 p-4 dark:border-gray-700 dark:bg-gray-800/60"
+        >
+          <legend className="px-1 text-sm font-semibold text-gray-900 dark:text-white">
+            Also try the alt course on selected days
+          </legend>
+          <p
+            id="altCourseDaysHelp"
+            className="mb-3 text-xs text-gray-500 dark:text-gray-400"
+          >
+            On selected weekdays, also try to book on the <em>other</em> course in parallel &mdash;
+            i.e. PLC on a BRC day, and vice versa. Both attempts run to completion, so it&rsquo;s
+            possible to book on both courses for the same day &mdash; if that happens, cancel
+            whichever one you don&rsquo;t want from history. <strong>Skipped while a course
+            override is active</strong> (the override wins).
+          </p>
+          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Alt-course weekdays">
+            {WEEKDAYS.map((d) => {
+              const active = altCourseDays.includes(d.code);
+              return (
+                <button
+                  key={d.code}
+                  type="button"
+                  role="checkbox"
+                  aria-checked={active}
+                  aria-label={d.full}
+                  onClick={() =>
+                    setAltCourseDays((prev) =>
+                      prev.includes(d.code)
+                        ? prev.filter((x) => x !== d.code)
+                        : [...prev, d.code],
+                    )
+                  }
+                  className={
+                    'inline-flex h-8 w-9 items-center justify-center rounded-full border text-xs font-medium transition-colors ' +
+                    (active
+                      ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-500'
+                      : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600')
+                  }
+                >
+                  {d.label}
+                </button>
+              );
+            })}
+          </div>
+        </fieldset>
         <div>
           <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Cutoff time

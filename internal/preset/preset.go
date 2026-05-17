@@ -71,15 +71,20 @@ type Preset struct {
 	OverrideCourse  sql.NullString
 	OverrideUntil   sql.NullTime
 	SkipNextRun     bool
+	// AltCourseDays, when non-empty, is the set of weekdays (canonical 3-letter
+	// codes, e.g. "MON,WED,SAT" — see slotutil.ParseWeekdayCodes) on which the
+	// scheduler will also try to book on the OPPOSITE course (BRC <-> PLC) in
+	// parallel with the primary. Suppressed when a course override is active.
+	AltCourseDays sql.NullString
 }
 
 func (s *service) UpsertPreset(p Preset) error {
 	_, err := s.conn.Exec(`
 		INSERT INTO booking_presets (
 			user_name, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
-			override_course, override_until, updated_at
+			override_course, override_until, alt_course_days, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
 		ON CONFLICT (user_name) DO UPDATE SET
 			course = EXCLUDED.course,
 			cutoff = EXCLUDED.cutoff,
@@ -89,9 +94,10 @@ func (s *service) UpsertPreset(p Preset) error {
 			enabled = EXCLUDED.enabled,
 			override_course = EXCLUDED.override_course,
 			override_until = EXCLUDED.override_until,
+			alt_course_days = EXCLUDED.alt_course_days,
 			updated_at = NOW()`,
 		p.UserName, p.Course, p.Cutoff, p.RetryInterval, p.Timeout, p.NtfyTopic, p.Enabled,
-		p.OverrideCourse, p.OverrideUntil)
+		p.OverrideCourse, p.OverrideUntil, p.AltCourseDays)
 	return err
 }
 
@@ -100,12 +106,12 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 	err := s.conn.QueryRow(`
 		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
-		       override_course, override_until, skip_next_run
+		       override_course, override_until, skip_next_run, alt_course_days
 		FROM booking_presets
 		WHERE user_name = $1`, userName).
 		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
-			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun)
+			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -119,7 +125,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 	rows, err := s.conn.Query(`
 		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
-		       override_course, override_until, skip_next_run
+		       override_course, override_until, skip_next_run, alt_course_days
 		FROM booking_presets
 		WHERE enabled = true
 		ORDER BY user_name`)
@@ -134,7 +140,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 		if err := rows.Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff,
 			&p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
-			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun); err != nil {
+			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays); err != nil {
 			return nil, err
 		}
 		presets = append(presets, p)

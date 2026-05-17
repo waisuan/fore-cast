@@ -17,6 +17,12 @@ func IsClubCourse(id string) bool {
 	return id == booker.CourseBRC || id == booker.CoursePLC
 }
 
+// NormalizeCourseCode trims and upper-cases a user-supplied course code so it
+// can be compared / persisted in canonical form. Empty input round-trips to "".
+func NormalizeCourseCode(s string) string {
+	return strings.TrimSpace(strings.ToUpper(s))
+}
+
 // CourseForDate returns BRC for Mon/Tue/Sun, PLC otherwise (weekday from date string YYYY/MM/DD).
 func CourseForDate(txnDate string) string {
 	t, err := time.Parse("2006/01/02", txnDate)
@@ -29,6 +35,112 @@ func CourseForDate(txnDate string) string {
 	default:
 		return booker.CoursePLC
 	}
+}
+
+// OtherCourse returns the opposite club course code (BRC <-> PLC). Returns ""
+// for any input that isn't a known club course.
+func OtherCourse(course string) string {
+	switch NormalizeCourseCode(course) {
+	case booker.CourseBRC:
+		return booker.CoursePLC
+	case booker.CoursePLC:
+		return booker.CourseBRC
+	default:
+		return ""
+	}
+}
+
+// weekdayCodes maps the canonical 3-letter upper-case code to time.Weekday.
+// Sunday matches Go's time.Weekday zero value so iteration order is stable.
+var weekdayCodes = map[string]time.Weekday{
+	"SUN": time.Sunday,
+	"MON": time.Monday,
+	"TUE": time.Tuesday,
+	"WED": time.Wednesday,
+	"THU": time.Thursday,
+	"FRI": time.Friday,
+	"SAT": time.Saturday,
+}
+
+// weekdayCodeByDay is the inverse lookup of weekdayCodes, indexed by the
+// time.Weekday integer value (Sun=0..Sat=6).
+var weekdayCodeByDay = [7]string{
+	time.Sunday:    "SUN",
+	time.Monday:    "MON",
+	time.Tuesday:   "TUE",
+	time.Wednesday: "WED",
+	time.Thursday:  "THU",
+	time.Friday:    "FRI",
+	time.Saturday:  "SAT",
+}
+
+// weekdayOrder is the canonical Mon..Sun ordering used when serializing a set
+// of weekdays back to its storage form.
+var weekdayOrder = []time.Weekday{
+	time.Monday, time.Tuesday, time.Wednesday, time.Thursday,
+	time.Friday, time.Saturday, time.Sunday,
+}
+
+// WeekdayCode returns the canonical 3-letter code (e.g. "MON") for w. Returns
+// "" for any value outside [time.Sunday, time.Saturday].
+func WeekdayCode(w time.Weekday) string {
+	if w < time.Sunday || w > time.Saturday {
+		return ""
+	}
+	return weekdayCodeByDay[w]
+}
+
+// ParseWeekdayCodes parses a comma-separated list of weekday codes (e.g.
+// "MON,WED,SAT") into a deduped set. Whitespace and casing are tolerated. An
+// empty / whitespace-only input returns nil with no error. Unknown codes
+// produce an error.
+func ParseWeekdayCodes(s string) (map[time.Weekday]struct{}, error) {
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return nil, nil
+	}
+	out := make(map[time.Weekday]struct{}, 7)
+	for _, raw := range strings.Split(s, ",") {
+		code := strings.TrimSpace(strings.ToUpper(raw))
+		if code == "" {
+			continue
+		}
+		w, ok := weekdayCodes[code]
+		if !ok {
+			return nil, fmt.Errorf("invalid weekday code %q: expected one of MON,TUE,WED,THU,FRI,SAT,SUN", code)
+		}
+		out[w] = struct{}{}
+	}
+	return out, nil
+}
+
+// SerializeWeekdaySet renders a set back to its canonical comma-separated
+// storage form, ordered Mon..Sun. Empty set serializes to "".
+func SerializeWeekdaySet(set map[time.Weekday]struct{}) string {
+	return strings.Join(orderedWeekdayCodes(set), ",")
+}
+
+// CanonicalWeekdayCodes parses a stored alt-course-days string and returns its
+// canonical, validated, ordered slice form (Mon..Sun, deduped, unknown tokens
+// dropped). Returns nil for empty / malformed input. Use this when reading
+// stored state for consumers that may not re-validate (e.g. API responses,
+// log fields).
+func CanonicalWeekdayCodes(stored string) []string {
+	set, err := ParseWeekdayCodes(stored)
+	if err != nil || len(set) == 0 {
+		return nil
+	}
+	return orderedWeekdayCodes(set)
+}
+
+func orderedWeekdayCodes(set map[time.Weekday]struct{}) []string {
+	parts := make([]string, 0, len(set))
+	for _, w := range weekdayOrder {
+		if _, ok := set[w]; ok {
+			parts = append(parts, WeekdayCode(w))
+		}
+	}
+	return parts
 }
 
 // ParseCutoff converts a time like "8:15" or "07:30" to API format "1899-12-30THH:MM:00". Empty string returns default.
