@@ -158,6 +158,8 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		slot := &slots[i]
 		tag := slotTag(slot)
 		logger.Debug(tag+" slot",
+			logger.String("user", cfg.UserName),
+			logger.String("course", slot.CourseID),
 			logger.String("tee_time", slot.TeeTime),
 			logger.String("session", slot.Session),
 			logger.String("tee_box", slot.TeeBox.String()))
@@ -173,7 +175,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		}
 		resp, checkErr := client.CheckTeeTimeStatus(cfg.Token, checkIn)
 		if checkErr != nil {
-			logger.Error(tag+" failed to check tee time status", logger.Err(checkErr))
+			logger.Error(tag+" failed to check tee time status",
+				logger.String("user", cfg.UserName),
+				logger.String("course", slot.CourseID),
+				logger.Err(checkErr))
 			allSeenReserved = false
 			booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 			if booked {
@@ -183,7 +188,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				return false, Result{}, false, bookErr
 			}
 			if bookErr != nil {
-				logger.Error(tag+" failed to book slot", logger.Err(bookErr))
+				logger.Error(tag+" failed to book slot",
+					logger.String("user", cfg.UserName),
+					logger.String("course", slot.CourseID),
+					logger.Err(bookErr))
 			}
 			continue
 		}
@@ -192,13 +200,19 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		if reason == "" && !resp.Status {
 			reason = "slot not available"
 		}
-		logger.Info(tag+" tee time status checked", logger.Bool("status", resp.Status), logger.String("reason", reason))
+		logger.Info(tag+" tee time status checked",
+			logger.String("user", cfg.UserName),
+			logger.String("course", slot.CourseID),
+			logger.Bool("status", resp.Status),
+			logger.String("reason", reason))
 
 		if !resp.Status && booker.IsInvalidToken(resp.Reason) {
 			return false, Result{}, false, fmt.Errorf("tee time status: %w", booker.ErrInvalidToken)
 		}
 		if !resp.Status && reasonFlightAlreadyReserved(reason) {
-			logger.Debug(tag + " flight already reserved per status, skipping book")
+			logger.Debug(tag+" flight already reserved per status, skipping book",
+				logger.String("user", cfg.UserName),
+				logger.String("course", slot.CourseID))
 			continue
 		}
 
@@ -212,7 +226,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			return false, Result{}, false, bookErr
 		}
 		if bookErr != nil {
-			logger.Error(tag+" failed to book slot", logger.Err(bookErr))
+			logger.Error(tag+" failed to book slot",
+				logger.String("user", cfg.UserName),
+				logger.String("course", slot.CourseID),
+				logger.Err(bookErr))
 		}
 	}
 	return false, Result{}, allSeenReserved, nil
@@ -222,9 +239,13 @@ func reasonFlightAlreadyReserved(reason string) bool {
 	return strings.Contains(strings.ToLower(reason), strings.ToLower(flightAlreadyReservedPhrase))
 }
 
+// slotTag builds the human-readable prefix used for per-slot log lines.
+// CourseID is included up front so that when two courses run in parallel for
+// the same user (BRC + PLC fan-out), the interleaved log lines are still
+// attributable at a glance — e.g. "[BRC 7:46 AM SMorning T10] ...".
 func slotTag(slot *booker.TeeTimeSlot) string {
 	t := slotutil.FormatCutoffDisplay(slot.TeeTime)
-	return fmt.Sprintf("[%s S%s T%s]", t, slot.Session, slot.TeeBox.String())
+	return fmt.Sprintf("[%s %s S%s T%s]", slot.CourseID, t, slot.Session, slot.TeeBox.String())
 }
 
 func successResult(cfg *Config, slot *booker.TeeTimeSlot, bookingID string) Result {
@@ -252,7 +273,10 @@ func tryBookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTim
 		IPaddress:  cfg.UserName,
 		Holes:      18,
 	}
-	logger.Debug(tag+" attempting to book", logger.Time("at", time.Now()))
+	logger.Debug(tag+" attempting to book",
+		logger.String("user", cfg.UserName),
+		logger.String("course", slot.CourseID),
+		logger.Time("at", time.Now()))
 	resp, e := client.BookTeeTime(cfg.Token, input, cfg.Debug)
 	if e != nil {
 		return false, "", e
