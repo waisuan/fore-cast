@@ -56,15 +56,15 @@ func NewService(conn *sql.DB) Service {
 // in user_credentials; preset references user_name. See ResolveOverride for the
 // OverrideCourse / OverrideUntil state machine.
 type Preset struct {
-	ID              int
-	UserName        string
-	UpdatedAt       time.Time
-	Course          sql.NullString
-	Cutoff          string
-	RetryInterval   string
-	Timeout         string
+	ID            int
+	UserName      string
+	UpdatedAt     time.Time
+	Course        sql.NullString
+	Cutoff        string
+	RetryInterval string
+	Timeout       string
 	// BookingOpen is Malaysia local HH:MM when this preset may start club API calls.
-	BookingOpen string
+	BookingOpen     string
 	NtfyTopic       sql.NullString
 	Enabled         bool
 	LastRunStatus   string
