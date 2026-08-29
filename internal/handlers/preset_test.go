@@ -69,9 +69,11 @@ func (s *PresetHandlerSuite) TestGetPreset_NotFound_ReturnsDefaults() {
 	s.Assert().Equal(preset.DefaultCutoff, resp.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.RetryInterval)
 	s.Assert().Equal(preset.DefaultTimeout, resp.Timeout)
+	s.Assert().Equal(preset.DefaultBookingOpen, resp.BookingOpen)
 	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)
 	s.Assert().Equal(preset.DefaultTimeout, resp.Defaults.Timeout)
+	s.Assert().Equal(preset.DefaultBookingOpen, resp.Defaults.BookingOpen)
 }
 
 func (s *PresetHandlerSuite) TestGetPreset_Found() {
@@ -101,6 +103,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal("7:30", resp.Cutoff)
 	s.Assert().Equal("2s", resp.RetryInterval)
 	s.Assert().Equal("5m", resp.Timeout)
+	s.Assert().Equal(preset.DefaultBookingOpen, resp.BookingOpen)
 	s.Assert().Equal("my-topic", resp.NtfyTopic)
 	s.Assert().True(resp.EnableNotifications)
 	s.Assert().True(resp.Enabled)
@@ -231,6 +234,7 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 			s.Assert().Equal("8:15", p.Cutoff)
 			s.Assert().Equal("1s", p.RetryInterval)
 			s.Assert().Equal("10m", p.Timeout)
+			s.Assert().Equal(preset.DefaultBookingOpen, p.BookingOpen)
 			return nil
 		})
 
@@ -242,6 +246,19 @@ func (s *PresetHandlerSuite) TestSavePreset_DefaultsApplied() {
 	s.handler.SavePreset(rec, req)
 
 	s.Assert().Equal(http.StatusOK, rec.Code)
+}
+
+func (s *PresetHandlerSuite) TestSavePreset_InvalidBookingOpen() {
+	s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+
+	body, _ := json.Marshal(PresetRequest{BookingOpen: "25:99"})
+	req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.SavePreset(rec, req)
+
+	s.Assert().Equal(http.StatusBadRequest, rec.Code)
 }
 
 func (s *PresetHandlerSuite) TestSavePreset_InvalidRetryInterval_FallsBackToDefault() {

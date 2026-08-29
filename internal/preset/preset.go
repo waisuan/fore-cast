@@ -19,6 +19,7 @@ const (
 	DefaultCutoff        = "8:15"
 	DefaultRetryInterval = "1s"
 	DefaultTimeout       = "10m"
+	DefaultBookingOpen   = "21:59"
 	MinRetryInterval     = "0s"
 )
 
@@ -62,6 +63,8 @@ type Preset struct {
 	Cutoff          string
 	RetryInterval   string
 	Timeout         string
+	// BookingOpen is Malaysia local HH:MM when this preset may start club API calls.
+	BookingOpen string
 	NtfyTopic       sql.NullString
 	Enabled         bool
 	LastRunStatus   string
@@ -81,22 +84,23 @@ type Preset struct {
 func (s *service) UpsertPreset(p Preset) error {
 	_, err := s.conn.Exec(`
 		INSERT INTO booking_presets (
-			user_name, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
+			user_name, course, cutoff, retry_interval, timeout, booking_open, ntfy_topic, enabled,
 			override_course, override_until, alt_course_days, updated_at
 		)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, NOW())
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10, $11, NOW())
 		ON CONFLICT (user_name) DO UPDATE SET
 			course = EXCLUDED.course,
 			cutoff = EXCLUDED.cutoff,
 			retry_interval = EXCLUDED.retry_interval,
 			timeout = EXCLUDED.timeout,
+			booking_open = EXCLUDED.booking_open,
 			ntfy_topic = EXCLUDED.ntfy_topic,
 			enabled = EXCLUDED.enabled,
 			override_course = EXCLUDED.override_course,
 			override_until = EXCLUDED.override_until,
 			alt_course_days = EXCLUDED.alt_course_days,
 			updated_at = NOW()`,
-		p.UserName, p.Course, p.Cutoff, p.RetryInterval, p.Timeout, p.NtfyTopic, p.Enabled,
+		p.UserName, p.Course, p.Cutoff, p.RetryInterval, p.Timeout, p.BookingOpen, p.NtfyTopic, p.Enabled,
 		p.OverrideCourse, p.OverrideUntil, p.AltCourseDays)
 	return err
 }
@@ -104,12 +108,12 @@ func (s *service) UpsertPreset(p Preset) error {
 func (s *service) GetPreset(userName string) (*Preset, error) {
 	var p Preset
 	err := s.conn.QueryRow(`
-		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
+		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, booking_open, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
 		       override_course, override_until, skip_next_run, alt_course_days
 		FROM booking_presets
 		WHERE user_name = $1`, userName).
-		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
+		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.BookingOpen, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
 			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays)
 	if errors.Is(err, sql.ErrNoRows) {
@@ -123,7 +127,7 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 
 func (s *service) GetEnabledPresets() ([]Preset, error) {
 	rows, err := s.conn.Query(`
-		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, ntfy_topic, enabled,
+		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, booking_open, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
 		       override_course, override_until, skip_next_run, alt_course_days
 		FROM booking_presets
@@ -138,7 +142,7 @@ func (s *service) GetEnabledPresets() ([]Preset, error) {
 	for rows.Next() {
 		var p Preset
 		if err := rows.Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff,
-			&p.RetryInterval, &p.Timeout, &p.NtfyTopic, &p.Enabled,
+			&p.RetryInterval, &p.Timeout, &p.BookingOpen, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
 			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays); err != nil {
 			return nil, err

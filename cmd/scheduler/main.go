@@ -25,8 +25,23 @@ import (
 // It is not a failure for logging purposes but must not be counted as a booking success.
 var errRunCancelled = errors.New("run cancelled by user")
 
-func sleepUntilBookingOpen(cfg *deps.Config) {
-	h, mi, minH := cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy, cfg.SchedulerBookingWaitMinHourMy
+func presetBookingOpen(p preset.Preset) string {
+	if strings.TrimSpace(p.BookingOpen) == "" {
+		return preset.DefaultBookingOpen
+	}
+	return p.BookingOpen
+}
+
+func sleepUntilBookingOpen(cfg *deps.Config, bookingOpen string) {
+	h, mi, err := slotutil.ParseClockHM(bookingOpen)
+	if err != nil {
+		h, mi = cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy
+		if strings.TrimSpace(bookingOpen) != "" {
+			logger.Warn("invalid booking_open, using env wait time",
+				logger.String("booking_open", bookingOpen), logger.Err(err))
+		}
+	}
+	minH := cfg.SchedulerBookingWaitMinHourMy
 	if h < 0 || h > 23 || mi < 0 || mi > 59 || minH < 0 || minH > 23 {
 		logger.Warn("invalid scheduler booking wait times, skipping wait",
 			logger.Int("hour", h), logger.Int("minute", mi), logger.Int("min_hour", minH))
@@ -85,8 +100,6 @@ func run(d *deps.Dependencies) error {
 
 	if d.Config.BookerDryRun {
 		logger.Info("dry-run: booker api mocked", logger.String("scenario", d.Config.BookerDryRunScenario))
-	} else {
-		sleepUntilBookingOpen(d.Config)
 	}
 	logger.Info("found enabled presets", logger.Int("count", len(presets)), logger.Int("concurrency", d.Config.MaxConcurrentPresets))
 	start := time.Now()
@@ -100,6 +113,9 @@ func run(d *deps.Dependencies) error {
 		wg.Add(1)
 		go func(p preset.Preset) {
 			defer wg.Done()
+			if !d.Config.BookerDryRun {
+				sleepUntilBookingOpen(d.Config, presetBookingOpen(p))
+			}
 			sem <- struct{}{}
 			defer func() { <-sem }()
 
@@ -107,6 +123,7 @@ func run(d *deps.Dependencies) error {
 				logger.String("user", p.UserName),
 				logger.String("course", p.Course.String),
 				logger.String("cutoff", p.Cutoff),
+				logger.String("booking_open", p.BookingOpen),
 				logger.String("retry_interval", p.RetryInterval),
 				logger.String("timeout", p.Timeout))
 			if err := processPreset(d, p); err != nil {

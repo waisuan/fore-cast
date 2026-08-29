@@ -30,6 +30,7 @@ type PresetPatch = Partial<
     | 'cutoff'
     | 'retry_interval'
     | 'timeout'
+    | 'booking_open'
     | 'ntfy_topic'
     | 'course'
     | 'override_course'
@@ -49,6 +50,7 @@ function mergePresetUpdate(body: PresetPatch) {
   if (typeof body.cutoff === 'string') presetState.cutoff = body.cutoff;
   if (typeof body.retry_interval === 'string') presetState.retry_interval = body.retry_interval;
   if (typeof body.timeout === 'string') presetState.timeout = body.timeout;
+  if (typeof body.booking_open === 'string') presetState.booking_open = body.booking_open;
   if (typeof body.ntfy_topic === 'string') presetState.ntfy_topic = body.ntfy_topic;
   if (typeof body.course === 'string') presetState.course = body.course;
   if (typeof body.override_course === 'string') presetState.override_course = body.override_course;

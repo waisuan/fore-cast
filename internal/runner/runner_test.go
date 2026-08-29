@@ -304,6 +304,71 @@ func TestRun_AllSlotsFlightAlreadyReserved_ExitsWithoutRetrySleep(t *testing.T) 
 	assert.Less(t, elapsed, 500*time.Millisecond, "should not sleep between passes when all slots are already reserved")
 }
 
+func TestRun_BookingNotOpen_EndsPassWithoutWalkingRestOrBooking(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Timeout = 0
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:08:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{
+		Status: false,
+		Reason: "Flight time will be open after 10pm",
+	}, nil).Times(1)
+
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, StatusFailed, result.Status)
+	assert.Contains(t, err.Error(), "no slots booked")
+}
+
+func TestRun_BookingNotOpen_RetriesNextPassThenBooks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RetryInterval = time.Millisecond
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:08:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+
+	checkCalls := 0
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(_ string, in booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			checkCalls++
+			if checkCalls == 1 {
+				assert.Contains(t, in.TeeTime, "07:00:00")
+				return &booker.CheckTeeTimeStatusResponse{
+					Status: false,
+					Reason: "Flight time will be open after 10pm",
+				}, nil
+			}
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).Times(2)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-open"}},
+	}, nil).Times(1)
+
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B-open", result.BookingID)
+}
+
 func TestRun_FlightAlreadyReserved_SkipsSlot_SecondSlotBooks(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

@@ -46,6 +46,7 @@ interface PresetDefaults {
   retry_interval: string;
   min_retry_interval: string;
   timeout: string;
+  booking_open: string;
 }
 
 interface PresetData {
@@ -54,6 +55,7 @@ interface PresetData {
   cutoff: string;
   retry_interval: string;
   timeout: string;
+  booking_open: string;
   ntfy_topic: string;
   enable_notifications: boolean;
   enabled: boolean;
@@ -71,6 +73,7 @@ type OverrideMode = 'none' | 'once' | 'days7' | 'until';
 type OverridePayload = { course: string; until: string | null };
 
 const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
+const DEFAULT_BOOKING_OPEN = '21:59';
 
 // UI-only metadata for the dense pill row. Codes/order come from `date.ts`
 // (Sun..Sat to match `Date#getUTCDay()` and Go's `time.Weekday`) so the
@@ -170,7 +173,8 @@ function DefaultCourseSchedule() {
         ))}
       </ul>
       <p className="mt-3 text-xs text-gray-500 dark:text-gray-400">
-        Runs nightly at <strong>{SCHEDULER_FIRE_LABEL_MY}</strong> (Malaysia). Next run targets{' '}
+        The job wakes around <strong>{SCHEDULER_FIRE_LABEL_MY}</strong> (Malaysia) and waits until
+        your start time below before calling the club. Next run targets{' '}
         <strong>{formatWeekdayDateMY(bookingYmd)}</strong> &rarr;{' '}
         <span className="font-mono">{bookingCourse}</span>.
       </p>
@@ -198,6 +202,7 @@ export default function SettingsPage() {
   const [cutoff, setCutoff] = useState('');
   const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
+  const [bookingOpen, setBookingOpen] = useState('');
   const [ntfyTopic, setNtfyTopic] = useState('');
   const [enableNotifications, setEnableNotifications] = useState(false);
   const [enabled, setEnabled] = useState(false);
@@ -218,6 +223,7 @@ export default function SettingsPage() {
       setCutoff(res.cutoff ?? '');
       setRetryIntervalVal(res.retry_interval ?? res.defaults?.retry_interval ?? '1s');
       setTimeoutVal(res.timeout ?? '');
+      setBookingOpen(res.booking_open || res.defaults?.booking_open || DEFAULT_BOOKING_OPEN);
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
@@ -333,6 +339,7 @@ export default function SettingsPage() {
         cutoff,
         retry_interval: retryInterval || undefined,
         timeout: timeoutVal,
+        booking_open: bookingOpen,
         enable_notifications: enableNotifications,
         enabled,
         override_course: overridePayload.course,
@@ -517,6 +524,22 @@ export default function SettingsPage() {
             })}
           </div>
         </fieldset>
+        <div>
+          <label htmlFor="bookingOpen" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+            Start calling the club at
+          </label>
+          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+            Malaysia time. Inventory typically opens after 10:00 PM — starting earlier can lock
+            the account. Default: {defaults?.booking_open ?? DEFAULT_BOOKING_OPEN}
+          </p>
+          <input
+            id="bookingOpen"
+            type="time"
+            value={bookingOpen}
+            onChange={(e) => setBookingOpen(e.target.value)}
+            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          />
+        </div>
         <div>
           <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Cutoff time

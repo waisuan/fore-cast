@@ -46,8 +46,9 @@ type Config struct {
 	// How often the scheduler process polls DB for cancel_requested (user-initiated cancel).
 	SchedulerCancelPollInterval time.Duration `env:"SCHEDULER_CANCEL_POLL_INTERVAL" envDefault:"2s"`
 
-	// Pre-booking idle (scheduler only, not dry-run): in SchedulerTimezone, if local hour >= SchedulerBookingWaitMinHourMy
-	// and time is before SchedulerBookingWaitHourMy:Minute, sleep until that instant before any Booker calls.
+	// Pre-booking idle fallback (scheduler only, not dry-run) when a preset has no booking_open.
+	// In SchedulerTimezone, if local hour >= SchedulerBookingWaitMinHourMy and time is before
+	// hour:minute, sleep until that instant before Booker login. UI booking_open overrides this.
 	SchedulerTimezone             string `env:"SCHEDULER_TIMEZONE" envDefault:"Asia/Kuala_Lumpur"`
 	SchedulerBookingWaitHourMy    int    `env:"SCHEDULER_BOOKING_WAIT_HOUR_MY" envDefault:"21"`
 	SchedulerBookingWaitMinuteMy  int    `env:"SCHEDULER_BOOKING_WAIT_MINUTE_MY" envDefault:"59"`

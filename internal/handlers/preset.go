@@ -27,6 +27,7 @@ type PresetDefaults struct {
 	RetryInterval    string `json:"retry_interval"`
 	MinRetryInterval string `json:"min_retry_interval"`
 	Timeout          string `json:"timeout"`
+	BookingOpen      string `json:"booking_open"`
 }
 
 // PresetResponse is the JSON response for GET /api/v1/preset.
@@ -36,6 +37,7 @@ type PresetResponse struct {
 	Cutoff              string         `json:"cutoff"`
 	RetryInterval       string         `json:"retry_interval"`
 	Timeout             string         `json:"timeout"`
+	BookingOpen         string         `json:"booking_open"`
 	NtfyTopic           string         `json:"ntfy_topic"`
 	EnableNotifications bool           `json:"enable_notifications"`
 	Enabled             bool           `json:"enabled"`
@@ -62,6 +64,7 @@ type PresetRequest struct {
 	Cutoff              string   `json:"cutoff"`
 	RetryInterval       string   `json:"retry_interval"`
 	Timeout             string   `json:"timeout"`
+	BookingOpen         string   `json:"booking_open"`
 	EnableNotifications *bool    `json:"enable_notifications"`
 	Enabled             bool     `json:"enabled"`
 	OverrideCourse      string   `json:"override_course"`
@@ -86,6 +89,7 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		RetryInterval:    preset.DefaultRetryInterval,
 		MinRetryInterval: preset.MinRetryInterval,
 		Timeout:          preset.DefaultTimeout,
+		BookingOpen:      preset.DefaultBookingOpen,
 	}
 
 	existing, err := h.Service.GetPreset(u.UserName)
@@ -100,12 +104,17 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		resp.Cutoff = preset.DefaultCutoff
 		resp.RetryInterval = preset.DefaultRetryInterval
 		resp.Timeout = preset.DefaultTimeout
+		resp.BookingOpen = preset.DefaultBookingOpen
 	} else {
 		resp.UserName = existing.UserName
 		resp.Course = existing.Course.String
 		resp.Cutoff = existing.Cutoff
 		resp.RetryInterval = existing.RetryInterval
 		resp.Timeout = existing.Timeout
+		resp.BookingOpen = existing.BookingOpen
+		if resp.BookingOpen == "" {
+			resp.BookingOpen = preset.DefaultBookingOpen
+		}
 		resp.NtfyTopic = existing.NtfyTopic.String
 		resp.EnableNotifications = existing.NtfyTopic.Valid && existing.NtfyTopic.String != ""
 		resp.Enabled = existing.Enabled
@@ -181,6 +190,7 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 		Cutoff:         req.Cutoff,
 		RetryInterval:  req.RetryInterval,
 		Timeout:        req.Timeout,
+		BookingOpen:    req.BookingOpen,
 		NtfyTopic:      ntfyTopic,
 		Enabled:        req.Enabled,
 		OverrideCourse: overrideCourse,
@@ -202,6 +212,16 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.Timeout == "" {
 		p.Timeout = preset.DefaultTimeout
+	}
+	if p.BookingOpen == "" {
+		p.BookingOpen = preset.DefaultBookingOpen
+	} else {
+		norm, err := slotutil.NormalizeClockHM(p.BookingOpen)
+		if err != nil {
+			http.Error(w, err.Error(), http.StatusBadRequest)
+			return
+		}
+		p.BookingOpen = norm
 	}
 
 	if err := h.Service.UpsertPreset(p); err != nil {

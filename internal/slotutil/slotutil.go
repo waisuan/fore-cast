@@ -143,20 +143,52 @@ func orderedWeekdayCodes(set map[time.Weekday]struct{}) []string {
 	return parts
 }
 
-// ParseCutoff converts a time like "8:15" or "07:30" to API format "1899-12-30THH:MM:00". Empty string returns default.
-func ParseCutoff(s string) (string, error) {
+func parseClock(s string) (time.Time, error) {
 	s = strings.TrimSpace(s)
-	if s == "" {
-		return DefaultCutoffTeeTime, nil
-	}
 	t, err := time.Parse("15:04", s)
 	if err != nil {
 		t, err = time.Parse("3:04", s)
 	}
+	return t, err
+}
+
+// ParseCutoff converts a time like "8:15" or "07:30" to API format "1899-12-30THH:MM:00". Empty string returns default.
+func ParseCutoff(s string) (string, error) {
+	if strings.TrimSpace(s) == "" {
+		return DefaultCutoffTeeTime, nil
+	}
+	t, err := parseClock(s)
 	if err != nil {
 		return "", fmt.Errorf("invalid cutoff %q: use HH:MM or H:MM (e.g. 8:15 or 07:30)", s)
 	}
 	return "1899-12-30T" + t.Format("15:04:05"), nil
+}
+
+// ParseClockHM parses a wall-clock time like "21:59" or "9:05". Empty input is an error
+// (callers that want a default should apply it before calling).
+func ParseClockHM(s string) (hour, minute int, err error) {
+	if strings.TrimSpace(s) == "" {
+		return 0, 0, fmt.Errorf("empty clock time")
+	}
+	t, err := parseClock(s)
+	if err != nil {
+		return 0, 0, fmt.Errorf("invalid time %q: use HH:MM (e.g. 21:59 or 22:00)", s)
+	}
+	return t.Hour(), t.Minute(), nil
+}
+
+// NormalizeClockHM parses s and returns canonical HH:MM.
+func NormalizeClockHM(s string) (string, error) {
+	h, mi, err := ParseClockHM(s)
+	if err != nil {
+		return "", err
+	}
+	return FormatClockHM(h, mi), nil
+}
+
+// FormatClockHM returns hour:minute as HH:MM (24-hour).
+func FormatClockHM(hour, minute int) string {
+	return time.Date(0, 1, 1, hour, minute, 0, 0, time.UTC).Format("15:04")
 }
 
 // SlotsBeforeCutoff returns slots with TeeTime before cutoff, sorted earliest first.

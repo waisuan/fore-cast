@@ -36,6 +36,21 @@ func (s *SlotutilSuite) TestCourseForDate() {
 	}
 }
 
+func (s *SlotutilSuite) TestParseClockHM() {
+	h, m, err := ParseClockHM("21:59")
+	s.Require().NoError(err)
+	s.Assert().Equal(21, h)
+	s.Assert().Equal(59, m)
+	s.Assert().Equal("22:00", FormatClockHM(22, 0))
+	_, _, err = ParseClockHM("")
+	s.Assert().Error(err)
+	_, _, err = ParseClockHM("25:00")
+	s.Assert().Error(err)
+	norm, err := NormalizeClockHM("9:05")
+	s.Require().NoError(err)
+	s.Assert().Equal("09:05", norm)
+}
+
 func (s *SlotutilSuite) TestParseCutoff() {
 	tests := []struct {
 		in   string

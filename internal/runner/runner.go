@@ -24,6 +24,13 @@ const (
 
 const flightAlreadyReservedPhrase = "The flight has already been reserved"
 
+// Phrases the club uses when the booking window is still closed (account-wide,
+// not per-slot). One check is enough; the rest of the pass is skipped.
+var bookingNotOpenPhrases = []string{
+	"will be open after",
+	"not allowed during this time range",
+}
+
 // Config holds input parameters for a booking run.
 type Config struct {
 	UserName      string
@@ -62,7 +69,9 @@ func resultWithCourse(cfg Config, status Status, msg string) Result {
 
 // Run fetches slots before the cutoff, then repeatedly walks them in order: CheckTeeTimeStatus,
 // then at most one BookTeeTime per slot (skipped when the check Reason indicates the flight is
-// already reserved). Sleeps RetryInterval only between full passes. Invalid token aborts immediately.
+// already reserved). If the check says the booking window is not open yet, the rest of that
+// pass is skipped (no further slots, no book) and the next pass waits RetryInterval.
+// Sleeps RetryInterval only between full passes. Invalid token aborts immediately.
 // The caller should supply ctx with an appropriate deadline (or cancel) for repeat mode; cancellation
 // yields StatusCancelled.
 func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result, error) {
@@ -215,6 +224,9 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				logger.String("course", slot.CourseID))
 			continue
 		}
+		if !resp.Status && reasonBookingNotOpen(reason) {
+			return false, Result{}, false, nil
+		}
 
 		allSeenReserved = false
 
@@ -230,13 +242,30 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				logger.String("user", cfg.UserName),
 				logger.String("course", slot.CourseID),
 				logger.Err(bookErr))
+			if reasonBookingNotOpen(bookErr.Error()) {
+				return false, Result{}, false, nil
+			}
 		}
 	}
 	return false, Result{}, allSeenReserved, nil
 }
 
 func reasonFlightAlreadyReserved(reason string) bool {
-	return strings.Contains(strings.ToLower(reason), strings.ToLower(flightAlreadyReservedPhrase))
+	return reasonContains(reason, flightAlreadyReservedPhrase)
+}
+
+func reasonBookingNotOpen(reason string) bool {
+	return reasonContains(reason, bookingNotOpenPhrases...)
+}
+
+func reasonContains(reason string, phrases ...string) bool {
+	low := strings.ToLower(reason)
+	for _, p := range phrases {
+		if strings.Contains(low, strings.ToLower(p)) {
+			return true
+		}
+	}
+	return false
 }
 
 // slotTag builds the human-readable prefix used for per-slot log lines.
