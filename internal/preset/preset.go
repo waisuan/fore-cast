@@ -19,7 +19,7 @@ const (
 	DefaultCutoff        = "8:15"
 	DefaultRetryInterval = "1s"
 	DefaultTimeout       = "10m"
-	DefaultBookingOpen   = "21:59"
+	DefaultBookingOpen   = "21:59:00"
 	MinRetryInterval     = "0s"
 )
 
@@ -63,7 +63,7 @@ type Preset struct {
 	Cutoff        string
 	RetryInterval string
 	Timeout       string
-	// BookingOpen is Malaysia local HH:MM when this preset may start club API calls.
+	// BookingOpen is Malaysia local HH:MM or HH:MM:SS when this preset may start club API calls.
 	BookingOpen     string
 	NtfyTopic       sql.NullString
 	Enabled         bool

@@ -10,6 +10,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/history"
@@ -33,18 +34,19 @@ func presetBookingOpen(p preset.Preset) string {
 }
 
 func sleepUntilBookingOpen(cfg *deps.Config, bookingOpen string) {
-	h, mi, err := slotutil.ParseClockHM(bookingOpen)
+	h, mi, sec, err := slotutil.ParseClockHM(bookingOpen)
 	if err != nil {
 		h, mi = cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy
+		sec = 0
 		if strings.TrimSpace(bookingOpen) != "" {
 			logger.Warn("invalid booking_open, using env wait time",
 				logger.String("booking_open", bookingOpen), logger.Err(err))
 		}
 	}
 	minH := cfg.SchedulerBookingWaitMinHourMy
-	if h < 0 || h > 23 || mi < 0 || mi > 59 || minH < 0 || minH > 23 {
+	if h < 0 || h > 23 || mi < 0 || mi > 59 || sec < 0 || sec > 59 || minH < 0 || minH > 23 {
 		logger.Warn("invalid scheduler booking wait times, skipping wait",
-			logger.Int("hour", h), logger.Int("minute", mi), logger.Int("min_hour", minH))
+			logger.Int("hour", h), logger.Int("minute", mi), logger.Int("second", sec), logger.Int("min_hour", minH))
 		return
 	}
 	tz := cfg.SchedulerTimezone
@@ -60,7 +62,7 @@ func sleepUntilBookingOpen(cfg *deps.Config, bookingOpen string) {
 	if now.Hour() < minH {
 		return
 	}
-	target := time.Date(now.Year(), now.Month(), now.Day(), h, mi, 0, 0, loc)
+	target := time.Date(now.Year(), now.Month(), now.Day(), h, mi, sec, 0, loc)
 	if !now.Before(target) {
 		return
 	}
@@ -236,13 +238,14 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 
 	baseCfg := runner.Config{
-		UserName:      p.UserName,
-		Token:         token,
-		TxnDate:       txnDate,
-		CutoffTeeTime: cutoffTeeTime,
-		RetryInterval: retryInterval,
-		Debug:         false,
-		Timeout:       timeout,
+		UserName:         p.UserName,
+		Token:            token,
+		TxnDate:          txnDate,
+		CutoffTeeTime:    cutoffTeeTime,
+		RetryInterval:    retryInterval,
+		Debug:            false,
+		Timeout:          timeout,
+		CheckToBookDelay: booker.DefaultCheckToBookDelay,
 	}
 
 	var runCtx context.Context

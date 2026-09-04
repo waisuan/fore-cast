@@ -44,6 +44,9 @@ type Config struct {
 	// Timeout is the maximum duration for the whole run when > 0 (repeated passes until success, all-reserved exit, or deadline).
 	// When 0, exactly one full pass is attempted.
 	Timeout time.Duration
+	// CheckToBookDelay waits after a successful check before book. Zero means no wait (tests).
+	// See booker.DefaultCheckToBookDelay.
+	CheckToBookDelay time.Duration
 }
 
 // Result describes the outcome of a booking run.
@@ -226,6 +229,14 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		}
 		if !resp.Status && reasonBookingNotOpen(reason) {
 			return false, Result{}, false, nil
+		}
+
+		if resp.Status && cfg.CheckToBookDelay > 0 {
+			select {
+			case <-ctx.Done():
+				return false, Result{}, false, ctx.Err()
+			case <-time.After(cfg.CheckToBookDelay):
+			}
 		}
 
 		allSeenReserved = false

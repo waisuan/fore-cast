@@ -73,7 +73,16 @@ type OverrideMode = 'none' | 'once' | 'days7' | 'until';
 type OverridePayload = { course: string; until: string | null };
 
 const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
-const DEFAULT_BOOKING_OPEN = '21:59';
+const DEFAULT_BOOKING_OPEN = '21:59:00';
+
+/** Normalize HH:MM or HH:MM:SS for <input type="time" step="1">. */
+function clockWithSeconds(t: string): string {
+  const parts = t.trim().split(':');
+  if (parts.length === 2) {
+    return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}:00`;
+  }
+  return t;
+}
 
 // UI-only metadata for the dense pill row. Codes/order come from `date.ts`
 // (Sun..Sat to match `Date#getUTCDay()` and Go's `time.Weekday`) so the
@@ -223,7 +232,9 @@ export default function SettingsPage() {
       setCutoff(res.cutoff ?? '');
       setRetryIntervalVal(res.retry_interval ?? res.defaults?.retry_interval ?? '1s');
       setTimeoutVal(res.timeout ?? '');
-      setBookingOpen(res.booking_open || res.defaults?.booking_open || DEFAULT_BOOKING_OPEN);
+      setBookingOpen(
+        clockWithSeconds(res.booking_open || res.defaults?.booking_open || DEFAULT_BOOKING_OPEN),
+      );
       setNtfyTopic(res.ntfy_topic ?? '');
       setEnableNotifications(res.enable_notifications ?? false);
       setEnabled(res.enabled ?? false);
@@ -529,12 +540,14 @@ export default function SettingsPage() {
             Start calling the club at
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Malaysia time. Inventory typically opens after 10:00 PM — starting earlier can lock
-            the account. Default: {defaults?.booking_open ?? DEFAULT_BOOKING_OPEN}
+            Malaysia time, including seconds. Inventory typically opens after 10:00 PM — starting
+            earlier can lock the account. Default:{' '}
+            {clockWithSeconds(defaults?.booking_open ?? DEFAULT_BOOKING_OPEN)}
           </p>
           <input
             id="bookingOpen"
             type="time"
+            step="1"
             value={bookingOpen}
             onChange={(e) => setBookingOpen(e.target.value)}
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"

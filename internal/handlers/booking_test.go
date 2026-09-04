@@ -22,6 +22,7 @@ type BookingHandlerSuite struct {
 }
 
 func (s *BookingHandlerSuite) SetupTest() {
+	afterSuccessfulCheckDelay = 0
 	s.ctrl = gomock.NewController(s.T())
 	s.mockBooker = booker.NewMockClientInterface(s.ctrl)
 	s.handler = &BookingHandler{Booker: s.mockBooker}

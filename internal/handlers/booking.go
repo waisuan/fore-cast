@@ -3,10 +3,14 @@ package handlers
 import (
 	"encoding/json"
 	"net/http"
+	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
 )
+
+// Overridden to 0 in tests so Book does not sleep.
+var afterSuccessfulCheckDelay = booker.DefaultCheckToBookDelay
 
 // BookingHandler handles booking endpoints.
 type BookingHandler struct {
@@ -133,6 +137,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "slot no longer available", http.StatusConflict)
 		return
 	}
+	time.Sleep(afterSuccessfulCheckDelay)
 	input := booker.GolfNewBooking2Input{
 		CourseID:   req.CourseID,
 		TxnDate:    req.TxnDate,
