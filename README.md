@@ -9,8 +9,8 @@ Built and deployed on [Railway](https://railway.app).
 1. Logs in with your club member credentials.
 2. Fetches available tee time slots for the target date (default: 1 week ahead).
 3. Filters slots before the cutoff time (default: 8:15 AM).
-4. Walks those slots in time order: checks each slot's status, then attempts at most one book per slot (skipping when the API says the flight is already reserved).
-5. Repeats full passes until a booking succeeds, every slot is already reserved, or the preset timeout elapses. The retry interval is the pause **between** full passes, not between individual slots.
+4. Walks those slots in time order: checks each slot's status, waits 3s after a successful check, then attempts at most one book per slot (skipping when the API says the flight is already reserved, or ending the pass when the window is closed or the account is Rapid-locked).
+5. Repeats full passes until a booking succeeds, every slot is already reserved, or the preset timeout elapses. Pauses between passes depend on why the last pass stopped — see [Scheduler delays](#scheduler-delays).
 
 Course is selected automatically based on the day of the week (configurable per preset in the web UI).
 
@@ -58,6 +58,20 @@ Presets are processed concurrently, capped at `MAX_CONCURRENT_PRESETS` (default 
 Run status (`running`, `success`, `failed`) is written back to the preset row so the web UI can display progress. Push notification topics are auto-generated per user when enabled via the settings page.
 
 **Local testing**: run `make scheduler` to execute against the real Booker API (requires enabled presets in the web UI). Use `make scheduler-dry` to mock the API—override with `make scheduler-dry SCENARIO=success` or `SCENARIO=empty`. No real HTTP calls are made in dry-run.
+
+## Scheduler delays
+
+These are the cron defaults. Tests leave the extra waits at zero and only use the preset retry interval. A Book tap in the web UI uses the 3s check-to-book delay but does **not** re-login or apply Rapid / window-closed waits.
+
+| Delay | Default | When |
+|---|---|---|
+| Check → book | 3s | After `GolfCheckTeeTimeStatus` succeeds (`Action=0` selects the flight). Booking sooner returns club `20017` ("select your flight again"). |
+| Retry interval | 1s (preset) | After a normal unsuccessful pass (slots walked, none booked, window open, not Rapid). This is the pause **between** full passes, not between slots. |
+| Window closed | 5s | Check or book says *will be open after* or *not allowed during this time range*. That pass ends immediately (no more slots, no book). Flat — does not grow. |
+| Rapid backoff | 3s → 6s → 12s → 24s | Check says *Rapid attempts* / *temporarily locked*. No book; wait, then check again. Consecutive Rapids double the wait, capped at 24s. A later window-closed or normal pass resets to 3s. |
+| Session refresh | retry interval only (1s) | CODE103 / invalid token: scheduler logs in again (mutex so BRC and PLC share one login) and continues until the preset timeout. No extra 5s — a new token is usable immediately. If the next check is Rapid, Rapid backoff applies. UI and tests without a refresh callback still fail fast. |
+
+`max(retry interval, special wait)` is what actually sleeps. Start calling the club at **22:00:00** or later in Settings so the first burst is not "open after 10pm" plus Rapid. Fallback if a preset has no `booking_open` is `SCHEDULER_BOOKING_WAIT_HOUR_MY` / `_MINUTE_MY` (21:59).
 
 ## Admin registration
 

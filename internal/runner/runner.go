@@ -24,12 +24,42 @@ const (
 
 const flightAlreadyReservedPhrase = "The flight has already been reserved"
 
-// Phrases the club uses when the booking window is still closed (account-wide,
-// not per-slot). One check is enough; the rest of the pass is skipped.
+// Phrases the club uses when booking is blocked account-wide (window still
+// closed, or rate-limit / lock). One check is enough; do not book.
 var bookingNotOpenPhrases = []string{
 	"will be open after",
 	"not allowed during this time range",
+	"rapid attempts",
+	"temporarily locked",
 }
+
+var rapidLockPhrases = []string{
+	"rapid attempts",
+	"temporarily locked",
+}
+
+const (
+	// DefaultAccountWideCooldown is the scheduler pause after a window-closed
+	// check/book ("open after 10pm", "not allowed during this time range").
+	// Flat, not exponential. Long enough that a 1s RetryInterval does not
+	// poll a shut window into Rapid; short enough to still be near 22:00
+	// when the club opens. Not used after a CODE103 re-login — a new token
+	// is usable immediately.
+	DefaultAccountWideCooldown = 5 * time.Second
+	// DefaultRapidBackoffInitial is the first Rapid / "temporarily locked"
+	// wait. Same 3s as CheckToBookDelay: do not hammer a locked account.
+	DefaultRapidBackoffInitial = booker.DefaultCheckToBookDelay
+	// DefaultRapidBackoffMax is the Rapid cap: 3s → 6s → 12s → 24s.
+	DefaultRapidBackoffMax = 24 * time.Second
+)
+
+type passWait int
+
+const (
+	waitRetryOnly passWait = iota
+	waitAccountWide
+	waitRapid
+)
 
 // Config holds input parameters for a booking run.
 type Config struct {
@@ -38,15 +68,38 @@ type Config struct {
 	TxnDate       string
 	CourseID      string
 	CutoffTeeTime string
-	// RetryInterval is the pause after a full pass through all cutoff slots before starting the next pass (0 = no extra delay).
+	// RetryInterval is the pause after a normal unsuccessful pass (slots
+	// checked, none booked, window not closed, not Rapid). Preset default is
+	// 1s. Zero means no extra delay. Window-closed and Rapid waits replace
+	// this when they are longer.
 	RetryInterval time.Duration
 	Debug         bool
 	// Timeout is the maximum duration for the whole run when > 0 (repeated passes until success, all-reserved exit, or deadline).
 	// When 0, exactly one full pass is attempted.
 	Timeout time.Duration
-	// CheckToBookDelay waits after a successful check before book. Zero means no wait (tests).
-	// See booker.DefaultCheckToBookDelay.
+	// CheckToBookDelay waits after a successful check (Action=0 selects the
+	// flight) before book. Club returns 20017 if we book sooner. Scheduler
+	// uses 3s (booker.DefaultCheckToBookDelay). Zero means no wait (tests).
 	CheckToBookDelay time.Duration
+	// Wait clocks (scheduler values; tests leave them 0 → RetryInterval only):
+	//
+	//   CheckToBookDelay      3s   after a *successful* check, before book
+	//   AccountWideCooldown   5s   after window-closed only
+	//   RapidBackoffInitial   3s   first Rapid / temporarily-locked wait
+	//   RapidBackoffMax      24s   Rapid cap (3, 6, 12, 24)
+	//
+	// AccountWideCooldown is the minimum pause after a window-closed pass.
+	// Zero means only RetryInterval.
+	AccountWideCooldown time.Duration
+	// RapidBackoffInitial is the first wait after Rapid / temporarily locked.
+	// Each consecutive Rapid doubles it until RapidBackoffMax. A later
+	// window-closed or normal pass resets to this. Zero means only RetryInterval.
+	RapidBackoffInitial time.Duration
+	// RapidBackoffMax caps the Rapid exponential wait. Zero means uncapped.
+	RapidBackoffMax time.Duration
+	// RefreshToken, when set, is called after CODE103 so the run can continue
+	// until ctx deadline instead of failing fast. Nil keeps fail-fast (tests, UI).
+	RefreshToken func(ctx context.Context) (string, error)
 }
 
 // Result describes the outcome of a booking run.
@@ -73,12 +126,17 @@ func resultWithCourse(cfg Config, status Status, msg string) Result {
 // Run fetches slots before the cutoff, then repeatedly walks them in order: CheckTeeTimeStatus,
 // then at most one BookTeeTime per slot (skipped when the check Reason indicates the flight is
 // already reserved). If the check says the booking window is not open yet, the rest of that
-// pass is skipped (no further slots, no book) and the next pass waits RetryInterval.
-// Sleeps RetryInterval only between full passes. Invalid token aborts immediately.
+// pass is skipped (no further slots, no book). Window-closed waits
+// AccountWideCooldown (5s in cron). Rapid waits 3s, then 6s, 12s, 24s.
+// Invalid token calls RefreshToken when set; the next pass uses RetryInterval
+// only (no extra 5s). If the next check is still Rapid, Rapid backoff applies.
 // The caller should supply ctx with an appropriate deadline (or cancel) for repeat mode; cancellation
 // yields StatusCancelled.
 func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result, error) {
 	slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
+	if err != nil && errors.Is(err, booker.ErrInvalidToken) && tryRefreshToken(ctx, &cfg) == nil {
+		slots, err = client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
+	}
 	if err != nil {
 		if errors.Is(err, booker.ErrInvalidToken) {
 			msg := "session expired — please log in again"
@@ -97,6 +155,7 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 	}
 
 	repeatPasses := cfg.Timeout > 0
+	rapidWait := cfg.RapidBackoffInitial
 
 	for {
 		if repeatPasses {
@@ -107,9 +166,15 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 			}
 		}
 
-		success, res, allReserved, passErr := runOnePass(ctx, client, &cfg, slotsBeforeCutoff)
+		success, res, allReserved, waitKind, passErr := runOnePass(ctx, client, &cfg, slotsBeforeCutoff)
 		if passErr != nil {
 			if errors.Is(passErr, booker.ErrInvalidToken) {
+				if tryRefreshToken(ctx, &cfg) == nil {
+					if waitErr := sleepCtx(ctx, retryWait(cfg, waitRetryOnly, 0)); waitErr != nil {
+						return resultForDeadline(cfg, slotsBeforeCutoff, ctx)
+					}
+					continue
+				}
 				msg := "session expired — please log in again"
 				r := resultWithCourse(cfg, StatusFailed, msg)
 				return r, fmt.Errorf("%s: %w", r.Message, passErr)
@@ -131,13 +196,78 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 		if !repeatPasses {
 			return noBookingResult(cfg, slotsBeforeCutoff)
 		}
-		if cfg.RetryInterval > 0 {
-			select {
-			case <-ctx.Done():
-				return resultForDeadline(cfg, slotsBeforeCutoff, ctx)
-			case <-time.After(cfg.RetryInterval):
-			}
+		d := retryWait(cfg, waitKind, rapidWait)
+		if waitKind == waitRapid && cfg.RapidBackoffInitial > 0 {
+			logger.Info("rapid lock, backing off",
+				logger.String("user", cfg.UserName),
+				logger.String("course", cfg.CourseID),
+				logger.Duration("wait", d))
+			rapidWait = nextRapidBackoff(rapidWait, cfg.RapidBackoffMax)
+		} else {
+			rapidWait = cfg.RapidBackoffInitial
 		}
+		if waitErr := sleepCtx(ctx, d); waitErr != nil {
+			return resultForDeadline(cfg, slotsBeforeCutoff, ctx)
+		}
+	}
+}
+
+func tryRefreshToken(ctx context.Context, cfg *Config) error {
+	if cfg.RefreshToken == nil {
+		return booker.ErrInvalidToken
+	}
+	if err := ctx.Err(); err != nil {
+		return err
+	}
+	tok, err := cfg.RefreshToken(ctx)
+	if err != nil || tok == "" {
+		if err == nil {
+			err = booker.ErrInvalidToken
+		}
+		return err
+	}
+	cfg.Token = tok
+	logger.Info("refreshed club session after invalid token",
+		logger.String("user", cfg.UserName),
+		logger.String("course", cfg.CourseID))
+	return nil
+}
+
+func retryWait(cfg Config, kind passWait, rapidWait time.Duration) time.Duration {
+	d := cfg.RetryInterval
+	switch kind {
+	case waitRapid:
+		if rapidWait > d {
+			d = rapidWait
+		}
+	case waitAccountWide:
+		if cfg.AccountWideCooldown > d {
+			d = cfg.AccountWideCooldown
+		}
+	}
+	return d
+}
+
+func nextRapidBackoff(cur, max time.Duration) time.Duration {
+	if cur <= 0 {
+		return 0
+	}
+	n := cur * 2
+	if max > 0 && n > max {
+		return max
+	}
+	return n
+}
+
+func sleepCtx(ctx context.Context, d time.Duration) error {
+	if d <= 0 {
+		return nil
+	}
+	select {
+	case <-ctx.Done():
+		return ctx.Err()
+	case <-time.After(d):
+		return nil
 	}
 }
 
@@ -158,12 +288,12 @@ func noBookingResult(cfg Config, slots []booker.TeeTimeSlot) (Result, error) {
 	return r, fmt.Errorf("%s", r.Message)
 }
 
-func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config, slots []booker.TeeTimeSlot) (success bool, result Result, allReserved bool, err error) {
+func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config, slots []booker.TeeTimeSlot) (success bool, result Result, allReserved bool, waitKind passWait, err error) {
 	allSeenReserved := true
 	for i := range slots {
 		select {
 		case <-ctx.Done():
-			return false, Result{}, false, ctx.Err()
+			return false, Result{}, false, waitRetryOnly, ctx.Err()
 		default:
 		}
 
@@ -194,10 +324,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			allSeenReserved = false
 			booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 			if booked {
-				return true, successResult(cfg, slot, bookingID), false, nil
+				return true, successResult(cfg, slot, bookingID), false, waitRetryOnly, nil
 			}
 			if bookErr != nil && errors.Is(bookErr, booker.ErrInvalidToken) {
-				return false, Result{}, false, bookErr
+				return false, Result{}, false, waitRetryOnly, bookErr
 			}
 			if bookErr != nil {
 				logger.Error(tag+" failed to book slot",
@@ -219,7 +349,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			logger.String("reason", reason))
 
 		if !resp.Status && booker.IsInvalidToken(resp.Reason) {
-			return false, Result{}, false, fmt.Errorf("tee time status: %w", booker.ErrInvalidToken)
+			return false, Result{}, false, waitRetryOnly, fmt.Errorf("tee time status: %w", booker.ErrInvalidToken)
 		}
 		if !resp.Status && reasonFlightAlreadyReserved(reason) {
 			logger.Debug(tag+" flight already reserved per status, skipping book",
@@ -228,13 +358,13 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			continue
 		}
 		if !resp.Status && reasonBookingNotOpen(reason) {
-			return false, Result{}, false, nil
+			return false, Result{}, false, waitKindForReason(reason), nil
 		}
 
 		if resp.Status && cfg.CheckToBookDelay > 0 {
 			select {
 			case <-ctx.Done():
-				return false, Result{}, false, ctx.Err()
+				return false, Result{}, false, waitRetryOnly, ctx.Err()
 			case <-time.After(cfg.CheckToBookDelay):
 			}
 		}
@@ -243,10 +373,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 
 		booked, bookingID, bookErr := tryBookSlot(client, cfg, slot, tag)
 		if booked {
-			return true, successResult(cfg, slot, bookingID), false, nil
+			return true, successResult(cfg, slot, bookingID), false, waitRetryOnly, nil
 		}
 		if bookErr != nil && errors.Is(bookErr, booker.ErrInvalidToken) {
-			return false, Result{}, false, bookErr
+			return false, Result{}, false, waitRetryOnly, bookErr
 		}
 		if bookErr != nil {
 			logger.Error(tag+" failed to book slot",
@@ -254,11 +384,11 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				logger.String("course", slot.CourseID),
 				logger.Err(bookErr))
 			if reasonBookingNotOpen(bookErr.Error()) {
-				return false, Result{}, false, nil
+				return false, Result{}, false, waitKindForReason(bookErr.Error()), nil
 			}
 		}
 	}
-	return false, Result{}, allSeenReserved, nil
+	return false, Result{}, allSeenReserved, waitRetryOnly, nil
 }
 
 func reasonFlightAlreadyReserved(reason string) bool {
@@ -267,6 +397,17 @@ func reasonFlightAlreadyReserved(reason string) bool {
 
 func reasonBookingNotOpen(reason string) bool {
 	return reasonContains(reason, bookingNotOpenPhrases...)
+}
+
+func reasonRapidLock(reason string) bool {
+	return reasonContains(reason, rapidLockPhrases...)
+}
+
+func waitKindForReason(reason string) passWait {
+	if reasonRapidLock(reason) {
+		return waitRapid
+	}
+	return waitAccountWide
 }
 
 func reasonContains(reason string, phrases ...string) bool {

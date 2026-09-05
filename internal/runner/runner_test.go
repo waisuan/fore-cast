@@ -407,6 +407,183 @@ func TestRun_FlightAlreadyReserved_SkipsSlot_SecondSlotBooks(t *testing.T) {
 	assert.Equal(t, "B-flight", result.BookingID)
 }
 
+func TestRun_RapidAttempts_EndsPassWithoutBooking(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Timeout = 0
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:08:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{
+		Status: false,
+		Reason: "Rapid attempts. Your account is temporarily locked.",
+	}, nil).Times(1)
+
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, StatusFailed, result.Status)
+	assert.Contains(t, err.Error(), "no slots booked")
+}
+
+func TestRun_InvalidToken_RefreshThenBooks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RetryInterval = time.Millisecond
+	cfg.RefreshToken = func(context.Context) (string, error) {
+		return "tok2", nil
+	}
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{
+		Status: false,
+		Reason: "CODE103 - Invalid Token",
+	}, nil).Times(1)
+	mock.EXPECT().CheckTeeTimeStatus("tok2", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil).Times(1)
+	mock.EXPECT().BookTeeTime("tok2", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-refresh"}},
+	}, nil).Times(1)
+
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B-refresh", result.BookingID)
+}
+
+func TestRun_InvalidToken_GetSlots_RefreshThenBooks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RefreshToken = func(context.Context) (string, error) {
+		return "tok2", nil
+	}
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	errInvalid := fmt.Errorf("get tee time: %w", booker.ErrInvalidToken)
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(nil, errInvalid)
+	mock.EXPECT().GetTeeTimeSlots("tok2", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok2", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
+	mock.EXPECT().BookTeeTime("tok2", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-get"}},
+	}, nil)
+
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.Equal(t, "B-get", result.BookingID)
+}
+
+func TestRun_AccountWideCooldown_UsedAfterWindowClosed(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RetryInterval = time.Millisecond
+	cfg.AccountWideCooldown = 40 * time.Millisecond
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+
+	checkCalls := 0
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(string, booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			checkCalls++
+			if checkCalls == 1 {
+				return &booker.CheckTeeTimeStatusResponse{
+					Status: false,
+					Reason: "Flight time will be open after 10pm",
+				}, nil
+			}
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).Times(2)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-cool"}},
+	}, nil)
+
+	start := time.Now()
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.GreaterOrEqual(t, elapsed, 40*time.Millisecond)
+}
+
+func TestRun_RapidBackoff_DoublesThenBooks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RetryInterval = time.Millisecond
+	cfg.RapidBackoffInitial = 20 * time.Millisecond
+	cfg.RapidBackoffMax = 80 * time.Millisecond
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+
+	checkCalls := 0
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(string, booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			checkCalls++
+			if checkCalls <= 2 {
+				return &booker.CheckTeeTimeStatusResponse{
+					Status: false,
+					Reason: "Rapid attempts. Your account is temporarily locked.",
+				}, nil
+			}
+			return &booker.CheckTeeTimeStatusResponse{Status: true}, nil
+		},
+	).Times(3)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-rapid"}},
+	}, nil)
+
+	start := time.Now()
+	result, err := Run(testCtx(t, cfg), cfg, mock)
+	elapsed := time.Since(start)
+	require.NoError(t, err)
+	assert.Equal(t, StatusSuccess, result.Status)
+	assert.GreaterOrEqual(t, elapsed, 60*time.Millisecond, "20ms then 40ms Rapid backoff")
+}
+
+func TestNextRapidBackoff_Caps(t *testing.T) {
+	t.Parallel()
+	assert.Equal(t, 6*time.Second, nextRapidBackoff(3*time.Second, DefaultRapidBackoffMax))
+	assert.Equal(t, 24*time.Second, nextRapidBackoff(12*time.Second, DefaultRapidBackoffMax))
+	assert.Equal(t, 24*time.Second, nextRapidBackoff(24*time.Second, DefaultRapidBackoffMax))
+	assert.Equal(t, time.Duration(0), nextRapidBackoff(0, DefaultRapidBackoffMax))
+}
+
 func TestRun_InvalidToken_FromCheck_FailsFast(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)

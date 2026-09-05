@@ -237,15 +237,31 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		retryInterval = preset.MinRetryIntervalDuration
 	}
 
+	var loginMu sync.Mutex
 	baseCfg := runner.Config{
-		UserName:         p.UserName,
-		Token:            token,
-		TxnDate:          txnDate,
-		CutoffTeeTime:    cutoffTeeTime,
-		RetryInterval:    retryInterval,
-		Debug:            false,
-		Timeout:          timeout,
-		CheckToBookDelay: booker.DefaultCheckToBookDelay,
+		UserName:            p.UserName,
+		Token:               token,
+		TxnDate:             txnDate,
+		CutoffTeeTime:       cutoffTeeTime,
+		RetryInterval:       retryInterval,
+		Debug:               false,
+		Timeout:             timeout,
+		CheckToBookDelay:    booker.DefaultCheckToBookDelay,    // 3s: club 20017 if book is sooner
+		AccountWideCooldown: runner.DefaultAccountWideCooldown, // 5s: window closed only
+		RapidBackoffInitial: runner.DefaultRapidBackoffInitial, // 3s, doubles on each Rapid
+		RapidBackoffMax:     runner.DefaultRapidBackoffMax,     // 24s cap
+		RefreshToken: func(ctx context.Context) (string, error) {
+			if err := ctx.Err(); err != nil {
+				return "", err
+			}
+			loginMu.Lock()
+			defer loginMu.Unlock()
+			tok, err := d.Booker.Login(p.UserName, password)
+			if err != nil {
+				return "", err
+			}
+			return tok, nil
+		},
 	}
 
 	var runCtx context.Context
