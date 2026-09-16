@@ -221,6 +221,52 @@ describe('SlotsPage', () => {
     );
   });
 
+  it('shows the API error message when booking fails', async () => {
+    vi.mocked(api.get).mockImplementation((path: string) => {
+      if (path === '/api/v1/preset') {
+        return Promise.resolve({ last_run_status: 'idle' });
+      }
+      if (path.startsWith('/api/v1/slots')) {
+        return Promise.resolve({
+          course: 'PLC',
+          slots: [
+            {
+              TeeTime: '1899-12-30T07:00:00',
+              Session: 'Morning',
+              TeeBox: '1',
+              CourseID: 'PLC',
+            },
+          ],
+        });
+      }
+      return Promise.reject(new Error(`unmocked GET ${path}`));
+    });
+    vi.mocked(api.post).mockRejectedValue(
+      new ApiError(
+        'The club locked this account for too many rapid attempts. Wait a minute before trying again.',
+        409,
+      ),
+    );
+
+    renderSlots();
+    await waitFor(() => expect(api.get).toHaveBeenCalledWith('/api/v1/preset'));
+
+    setDate('2030-12-20');
+    fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/1 slot\(s\)/)).toBeInTheDocument();
+    });
+
+    fireEvent.click(screen.getByRole('button', { name: /^book$/i }));
+
+    await waitFor(() => {
+      expect(
+        screen.getByText(/locked this account for too many rapid attempts/i),
+      ).toBeInTheDocument();
+    });
+  });
+
   it('shows an error toast when the slots request fails', async () => {
     vi.mocked(api.get).mockImplementation((path: string) => {
       if (path === '/api/v1/preset') {

@@ -101,7 +101,7 @@ describe('ToastProvider', () => {
     expect(screen.getByText('oops')).toBeInTheDocument();
 
     act(() => {
-      vi.advanceTimersByTime(2000);
+      vi.advanceTimersByTime(4000);
     });
     expect(screen.queryByText('oops')).not.toBeInTheDocument();
   });

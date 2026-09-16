@@ -177,6 +177,28 @@ func (s *BookingHandlerSuite) TestBook_SlotNoLongerAvailable() {
 	s.handler.Book(rec, req)
 
 	s.Assert().Equal(http.StatusConflict, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "Slot is no longer available.")
+}
+
+func (s *BookingHandlerSuite) TestBook_CheckReasonMappedToUserMessage() {
+	s.mockBooker.EXPECT().
+		CheckTeeTimeStatus("token", gomock.Any()).
+		Return(&booker.CheckTeeTimeStatusResponse{
+			Status: false,
+			Reason: "Rapid attempts detected. Please wait a moment before trying again.",
+		}, nil)
+
+	body, _ := json.Marshal(BookRequest{
+		CourseID: "PLC", TxnDate: "2026/02/25", Session: "1", TeeBox: "1", TeeTime: "07:00",
+	})
+	req := httptest.NewRequest(http.MethodPost, "/api/v1/booking/book", bytes.NewReader(body))
+	req.Header.Set("Content-Type", "application/json")
+	req = req.WithContext(context.WithUser(req.Context(), s.user))
+	rec := httptest.NewRecorder()
+	s.handler.Book(rec, req)
+
+	s.Assert().Equal(http.StatusConflict, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "too many rapid attempts")
 }
 
 func (s *BookingHandlerSuite) TestBook_BookReturnsFailure() {
@@ -197,6 +219,7 @@ func (s *BookingHandlerSuite) TestBook_BookReturnsFailure() {
 	s.handler.Book(rec, req)
 
 	s.Assert().Equal(http.StatusConflict, rec.Code)
+	s.Assert().Contains(rec.Body.String(), "slot taken")
 }
 
 func (s *BookingHandlerSuite) TestBook_InvalidTokenFromCheckStatus() {

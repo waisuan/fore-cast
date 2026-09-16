@@ -7,6 +7,7 @@ import (
 
 	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/context"
+	"github.com/waisuan/alfred/internal/logger"
 )
 
 // Overridden to 0 in tests so Book does not sleep.
@@ -134,7 +135,7 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
 			return
 		}
-		http.Error(w, "slot no longer available", http.StatusConflict)
+		writeBookConflict(w, u.UserName, req, "check", statusResp.Reason, "Slot is no longer available.")
 		return
 	}
 	time.Sleep(afterSuccessfulCheckDelay)
@@ -159,15 +160,22 @@ func (h *BookingHandler) Book(w http.ResponseWriter, r *http.Request) {
 			http.Error(w, "session expired — please log in again", http.StatusUnauthorized)
 			return
 		}
-		reason := bookResp.Reason
-		if reason == "" {
-			reason = "booking failed"
-		}
-		http.Error(w, reason, http.StatusConflict)
+		writeBookConflict(w, u.UserName, req, "book", bookResp.Reason, "Booking failed.")
 		return
 	}
 	w.Header().Set("Content-Type", "application/json")
 	_ = json.NewEncoder(w).Encode(map[string]string{"bookingID": bookResp.Result[0].BookingID})
+}
+
+func writeBookConflict(w http.ResponseWriter, user string, req BookRequest, step, reason, fallback string) {
+	logger.Info("manual book rejected",
+		logger.String("step", step),
+		logger.String("user", user),
+		logger.String("course", req.CourseID),
+		logger.String("txn_date", req.TxnDate),
+		logger.String("tee_time", req.TeeTime),
+		logger.String("reason", reason))
+	http.Error(w, booker.UserFacingReason(reason, fallback), http.StatusConflict)
 }
 
 // CancelRequest is the body for POST /api/v1/booking/cancel.
