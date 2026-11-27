@@ -56,4 +56,34 @@ describe('HistoryPage', () => {
       expect(screen.getByText('upstream')).toBeInTheDocument();
     });
   });
+
+  it('shows the run log steps for an attempt', async () => {
+    vi.mocked(api.get).mockResolvedValue({
+      attempts: [
+        {
+          id: 1,
+          created_at: '2026-11-27T14:00:03Z',
+          course_id: 'PLC',
+          txn_date: '2026/12/04',
+          tee_time: '',
+          tee_box: '',
+          booking_id: '',
+          status: 'failed',
+          message: '[PLC] no slot booked — last club reply: This Flight Is Blocked',
+          steps: [
+            { at: '2026-11-27T14:00:01Z', text: '7:37 AM tee 1: This Flight Is Blocked' },
+            { at: '2026-11-27T14:00:03Z', text: 'Done: nothing booked.' },
+          ],
+        },
+      ],
+    });
+
+    renderHistory();
+
+    await waitFor(() => {
+      expect(screen.getAllByText('What happened (2 steps)').length).toBeGreaterThan(0);
+    });
+    expect(screen.getAllByText('7:37 AM tee 1: This Flight Is Blocked').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('22:00:01').length).toBeGreaterThan(0);
+  });
 });

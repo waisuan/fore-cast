@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
@@ -336,7 +337,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, msg)
 		return errRunCancelled
 	default:
-		notifyUser(d.Notify, p, "FAILED: "+msg)
+		notifyUser(d.Notify, p, "FAILED: "+msg+". See History for the full run log.")
 		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, msg)
 		return errors.New(msg)
 	}
@@ -458,6 +459,9 @@ func logAttempt(svc history.Service, p preset.Preset, txnDate string, result run
 		BookingID: sql.NullString{String: result.BookingID, Valid: result.BookingID != ""},
 		Status:    string(result.Status),
 		Message:   result.Message,
+	}
+	if len(result.Steps) > 0 {
+		attempt.Steps, _ = json.Marshal(result.Steps) // []Step of strings and times cannot fail
 	}
 	if err := svc.LogAttempt(attempt); err != nil {
 		logger.Error("failed to log attempt", logger.String("user", p.UserName), logger.Err(err))

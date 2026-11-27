@@ -644,3 +644,52 @@ func TestRun_AlreadyCancelled(t *testing.T) {
 	assert.Equal(t, StatusCancelled, result.Status)
 	assert.Contains(t, result.Message, "cancelled")
 }
+
+func TestRun_StepsExplainTimeout(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.Waits = Waits{CheckToBook: time.Second}
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:08:00", Session: "1", TeeBox: booker.StringOrNumber("10")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: false, Reason: "This Flight Is Blocked"}, nil)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{Reason: "Tee Time was not reserve"}, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
+
+	result, err := Run(testCtx(t, 50*time.Millisecond), cfg, mock)
+	require.Error(t, err)
+	assert.Equal(t, "[PLC] no slot booked — last club reply: Tee Time was not reserve", result.Message)
+
+	var texts []string
+	for _, s := range result.Steps {
+		texts = append(texts, s.Text)
+	}
+	assert.Equal(t, []string{
+		"PLC on 2026/03/04: 2 tee time(s) before your 8:15 AM cutoff.",
+		"7:00 AM tee 1: This Flight Is Blocked",
+		"7:00 AM tee 1: booking failed: Tee Time was not reserve",
+		"7:08 AM tee 10: open.",
+		"7:08 AM tee 10: waiting 1s before booking (the club requires it).",
+		"7:08 AM tee 10: time ran out before the booking was sent. Try a longer timeout.",
+		"Done: nothing booked. [PLC] no slot booked — last club reply: Tee Time was not reserve",
+	}, texts)
+}
+
+func TestStepLog_CapsAndKeepsSummary(t *testing.T) {
+	t.Parallel()
+	l := &stepLog{}
+	for i := 0; i < maxSteps+5; i++ {
+		l.add("step %d", i)
+	}
+	steps := l.finish("Done.")
+	require.Len(t, steps, maxSteps+2)
+	assert.Equal(t, "… 5 more steps not shown", steps[maxSteps].Text)
+	assert.Equal(t, "Done.", steps[maxSteps+1].Text)
+}

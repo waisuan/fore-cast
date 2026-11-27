@@ -2,6 +2,7 @@ package history
 
 import (
 	"database/sql"
+	"encoding/json"
 	"fmt"
 	"time"
 )
@@ -36,13 +37,19 @@ type Attempt struct {
 	BookingID sql.NullString
 	Status    string
 	Message   string
+	// Steps is the run log as a JSON array of {at, text}; nil stores "[]".
+	Steps json.RawMessage
 }
 
 func (s *service) LogAttempt(a Attempt) error {
+	steps := []byte(a.Steps)
+	if len(steps) == 0 {
+		steps = []byte("[]")
+	}
 	_, err := s.conn.Exec(`
-		INSERT INTO booking_attempts (user_name, course_id, txn_date, tee_time, tee_box, booking_id, status, message)
-		VALUES ($1, $2, $3, $4, $5, $6, $7, $8)`,
-		a.UserName, a.CourseID, a.TxnDate, a.TeeTime, a.TeeBox, a.BookingID, a.Status, a.Message)
+		INSERT INTO booking_attempts (user_name, course_id, txn_date, tee_time, tee_box, booking_id, status, message, steps)
+		VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)`,
+		a.UserName, a.CourseID, a.TxnDate, a.TeeTime, a.TeeBox, a.BookingID, a.Status, a.Message, steps)
 	return err
 }
 
@@ -61,7 +68,7 @@ func (s *service) PruneAttempts(retention time.Duration) (int64, error) {
 
 func (s *service) GetAttempts(userName string, limit int) ([]Attempt, error) {
 	rows, err := s.conn.Query(`
-		SELECT id, created_at, user_name, course_id, txn_date, tee_time, tee_box, booking_id, status, message
+		SELECT id, created_at, user_name, course_id, txn_date, tee_time, tee_box, booking_id, status, message, steps
 		FROM booking_attempts
 		WHERE user_name = $1
 		ORDER BY created_at DESC
@@ -75,7 +82,7 @@ func (s *service) GetAttempts(userName string, limit int) ([]Attempt, error) {
 	for rows.Next() {
 		var a Attempt
 		if err := rows.Scan(&a.ID, &a.CreatedAt, &a.UserName, &a.CourseID, &a.TxnDate,
-			&a.TeeTime, &a.TeeBox, &a.BookingID, &a.Status, &a.Message); err != nil {
+			&a.TeeTime, &a.TeeBox, &a.BookingID, &a.Status, &a.Message, &a.Steps); err != nil {
 			return nil, err
 		}
 		attempts = append(attempts, a)

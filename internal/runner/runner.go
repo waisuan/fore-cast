@@ -71,6 +71,41 @@ type Result struct {
 	TeeBox    string
 	CourseID  string
 	BookingID string
+	// Steps is the human-readable run log shown to the user in History.
+	Steps []Step
+}
+
+// Step is one line of the user-facing run log.
+type Step struct {
+	At   time.Time `json:"at"`
+	Text string    `json:"text"`
+}
+
+// maxSteps bounds the stored log: a 10m run at a 1s retry would otherwise log
+// thousands of identical passes.
+const maxSteps = 150
+
+// stepLog collects Steps and remembers the club's last reply for the summary.
+type stepLog struct {
+	steps     []Step
+	dropped   int
+	lastReply string
+}
+
+func (l *stepLog) add(format string, args ...any) {
+	if len(l.steps) >= maxSteps {
+		l.dropped++
+		return
+	}
+	l.steps = append(l.steps, Step{At: time.Now(), Text: fmt.Sprintf(format, args...)})
+}
+
+// finish appends the closing line even when the log is full.
+func (l *stepLog) finish(text string) []Step {
+	if l.dropped > 0 {
+		l.steps = append(l.steps, Step{At: time.Now(), Text: fmt.Sprintf("… %d more steps not shown", l.dropped)})
+	}
+	return append(l.steps, Step{At: time.Now(), Text: text})
 }
 
 // reply is what a club Reason means for the run.
@@ -115,6 +150,23 @@ func resultWithCourse(cfg Config, status Status, msg string) Result {
 // check each slot, wait Waits.CheckToBook, then book. A window-closed or rapid
 // reply ends the pass early. CODE103 calls RefreshToken and retries.
 func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result, error) {
+	log := &stepLog{}
+	r, err := run(ctx, cfg, client, log)
+	r.Steps = log.finish(stepSummary(r))
+	return r, err
+}
+
+func stepSummary(r Result) string {
+	switch r.Status {
+	case StatusSuccess:
+		return "Done: booked."
+	case StatusCancelled:
+		return "Stopped: you cancelled the run."
+	}
+	return "Done: nothing booked. " + r.Message
+}
+
+func run(ctx context.Context, cfg Config, client booker.ClientInterface, log *stepLog) (Result, error) {
 	slots, err := client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
 	if errors.Is(err, booker.ErrInvalidToken) && tryRefreshToken(ctx, &cfg) == nil {
 		slots, err = client.GetTeeTimeSlots(cfg.Token, cfg.CourseID, cfg.TxnDate)
@@ -127,7 +179,9 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 		return resultWithCourse(cfg, StatusFailed, msg), fmt.Errorf("get tee times: %w", err)
 	}
 
+	cutoff := slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime)
 	slots = slotutil.SlotsBeforeCutoff(slots, cfg.CutoffTeeTime)
+	log.add("%s on %s: %d tee time(s) before your %s cutoff.", cfg.CourseID, cfg.TxnDate, len(slots), cutoff)
 	if len(slots) == 0 {
 		msg := fmt.Sprintf("no slots available before %s cutoff", slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime))
 		r := resultWithCourse(cfg, StatusNoSlots, msg)
@@ -137,19 +191,20 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 	rapidStreak := 0
 	for {
 		if ctx.Err() != nil {
-			return resultForDone(cfg, ctx)
+			return resultForDone(cfg, ctx, log)
 		}
 
-		res, outcome, passErr := runOnePass(ctx, client, &cfg, slots)
+		res, outcome, passErr := runOnePass(ctx, client, &cfg, slots, log)
 		switch {
 		case errors.Is(passErr, booker.ErrInvalidToken):
 			if tryRefreshToken(ctx, &cfg) != nil {
 				r := resultWithCourse(cfg, StatusFailed, "session expired — please log in again")
 				return r, fmt.Errorf("%s: %w", r.Message, passErr)
 			}
+			log.add("Club session expired; logged in again.")
 			outcome = replyOther // a new token is usable straight away
 		case passErr != nil:
-			return resultForDone(cfg, ctx)
+			return resultForDone(cfg, ctx, log)
 		case res != nil:
 			return *res, nil
 		case outcome == replyReserved:
@@ -163,6 +218,7 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 		case replyRapid:
 			wait = max(wait, rapidWait(cfg.Waits, rapidStreak))
 			rapidStreak++
+			log.add("Club rate limit hit; waiting %s before trying again.", wait)
 			logger.Info("rapid lock, backing off",
 				logger.String("user", cfg.UserName),
 				logger.String("course", cfg.CourseID),
@@ -170,11 +226,12 @@ func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result
 		case replyWindowClosed:
 			wait = max(wait, cfg.Waits.WindowClosed)
 			rapidStreak = 0
+			log.add("Booking window not open yet; waiting %s.", wait)
 		default:
 			rapidStreak = 0
 		}
 		if sleepCtx(ctx, wait) != nil {
-			return resultForDone(cfg, ctx)
+			return resultForDone(cfg, ctx, log)
 		}
 	}
 }
@@ -224,9 +281,13 @@ func sleepCtx(ctx context.Context, d time.Duration) error {
 	}
 }
 
-func resultForDone(cfg Config, ctx context.Context) (Result, error) {
+func resultForDone(cfg Config, ctx context.Context, log *stepLog) (Result, error) {
 	if errors.Is(ctx.Err(), context.DeadlineExceeded) {
-		return resultWithCourse(cfg, StatusFailed, "no slot booked"), errors.New("timeout with no booking")
+		msg := "no slot booked"
+		if log.lastReply != "" {
+			msg += " — last club reply: " + log.lastReply
+		}
+		return resultWithCourse(cfg, StatusFailed, msg), errors.New("timeout with no booking")
 	}
 	return resultWithCourse(cfg, StatusCancelled, "Run cancelled"), fmt.Errorf("booking cancelled: %w", ctx.Err())
 }
@@ -235,7 +296,7 @@ func resultForDone(cfg Config, ctx context.Context) (Result, error) {
 // outcome is replyReserved when every slot was already reserved, or the reply
 // that ended the pass early (window closed / rapid). err is ErrInvalidToken or
 // a ctx error.
-func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config, slots []booker.TeeTimeSlot) (*Result, reply, error) {
+func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config, slots []booker.TeeTimeSlot, log *stepLog) (*Result, reply, error) {
 	allReserved := true
 	for i := range slots {
 		if err := ctx.Err(); err != nil {
@@ -243,6 +304,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		}
 		slot := &slots[i]
 		tag := slotTag(slot)
+		name := slotName(slot)
 
 		resp, err := client.CheckTeeTimeStatus(cfg.Token, booker.GolfCheckTeeTimeStatusInput{
 			CourseID:  slot.CourseID,
@@ -259,6 +321,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				logger.String("user", cfg.UserName),
 				logger.String("course", slot.CourseID),
 				logger.Err(err))
+			log.add("%s: could not check the slot (%v). Skipping it.", name, err)
 			allReserved = false
 			continue
 		}
@@ -272,6 +335,12 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			logger.String("course", slot.CourseID),
 			logger.Bool("status", resp.Status),
 			logger.String("reason", reason))
+		if resp.Status {
+			log.add("%s: open.", name)
+		} else {
+			log.lastReply = reason
+			log.add("%s: %s", name, reason)
+		}
 
 		if !resp.Status {
 			if booker.IsInvalidToken(resp.Reason) {
@@ -287,7 +356,11 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		allReserved = false
 
 		if resp.Status && cfg.Waits.CheckToBook > 0 {
+			log.add("%s: waiting %s before booking (the club requires it).", name, cfg.Waits.CheckToBook)
 			if sleepCtx(ctx, cfg.Waits.CheckToBook) != nil {
+				if errors.Is(ctx.Err(), context.DeadlineExceeded) {
+					log.add("%s: time ran out before the booking was sent. Try a longer timeout.", name)
+				}
 				logger.Warn(tag+" deadline hit before book sent",
 					logger.String("user", cfg.UserName),
 					logger.String("course", slot.CourseID),
@@ -298,6 +371,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 
 		bookingID, err := bookSlot(client, cfg, slot)
 		if err == nil {
+			log.add("%s: booked. Booking ID %s.", name, bookingID)
 			res := successResult(cfg, slot, bookingID)
 			return &res, replyOther, nil
 		}
@@ -308,6 +382,8 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 			logger.String("user", cfg.UserName),
 			logger.String("course", slot.CourseID),
 			logger.Err(err))
+		log.lastReply = err.Error()
+		log.add("%s: booking failed: %s", name, err)
 		if r := classify(err.Error()); r == replyWindowClosed || r == replyRapid {
 			return nil, r, nil
 		}
@@ -323,6 +399,11 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 func slotTag(slot *booker.TeeTimeSlot) string {
 	t := slotutil.FormatCutoffDisplay(slot.TeeTime)
 	return fmt.Sprintf("[%s %s S%s T%s]", slot.CourseID, t, slot.Session, slot.TeeBox.String())
+}
+
+// slotName is the user-facing slot label, e.g. "7:37 AM tee 10".
+func slotName(slot *booker.TeeTimeSlot) string {
+	return fmt.Sprintf("%s tee %s", slotutil.FormatCutoffDisplay(slot.TeeTime), slot.TeeBox.String())
 }
 
 func successResult(cfg *Config, slot *booker.TeeTimeSlot, bookingID string) Result {
