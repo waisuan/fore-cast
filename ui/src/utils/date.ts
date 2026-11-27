@@ -108,16 +108,28 @@ export function formatDate(raw: string): string {
 export function formatDateTimeMY(iso: string | Date): string {
   const d = typeof iso === 'string' ? new Date(iso) : iso;
   if (isNaN(d.getTime())) return typeof iso === 'string' ? iso : '';
-  return d.toLocaleString('en-MY', {
-    timeZone: MY_TIMEZONE,
-    year: 'numeric',
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  });
+  return `${MY_DATE_FULL_FMT.format(d)}, ${MY_TIME_FMT.format(d)}`;
 }
+
+// One clock style app-wide, matching the server's tee-time labels: "7:37 AM", "9:59:58 PM".
+const MY_TIME_FMT = new Intl.DateTimeFormat('en-US', {
+  timeZone: MY_TIMEZONE,
+  hour: 'numeric',
+  minute: '2-digit',
+});
+const MY_DATE_FULL_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: MY_TIMEZONE,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+  year: 'numeric',
+});
+const MY_DATE_SHORT_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: MY_TIMEZONE,
+  weekday: 'short',
+  day: 'numeric',
+  month: 'short',
+});
 
 /**
  * Short timestamp in Malaysia time (e.g. history list).
@@ -125,24 +137,18 @@ export function formatDateTimeMY(iso: string | Date): string {
 export function formatDateTimeShortMY(iso: string | Date): string {
   const d = typeof iso === 'string' ? new Date(iso) : iso;
   if (isNaN(d.getTime())) return '';
-  return d.toLocaleString('en-MY', {
-    timeZone: MY_TIMEZONE,
-    month: 'short',
-    day: 'numeric',
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return `${MY_DATE_SHORT_FMT.format(d)}, ${MY_TIME_FMT.format(d)}`;
 }
 
-const MY_TIME_SEC_FMT = new Intl.DateTimeFormat('en-GB', {
+const MY_TIME_SEC_FMT = new Intl.DateTimeFormat('en-US', {
   timeZone: MY_TIMEZONE,
-  hour: '2-digit',
+  hour: 'numeric',
   minute: '2-digit',
   second: '2-digit',
 });
 
 /**
- * Time of day with seconds in Malaysia time (e.g. "22:00:03"), for run-log steps.
+ * Time of day with seconds in Malaysia time (e.g. "10:00:03 PM"), for run-log steps.
  */
 export function formatTimeSecMY(iso: string): string {
   const d = new Date(iso);
@@ -150,13 +156,15 @@ export function formatTimeSecMY(iso: string): string {
 }
 
 /**
- * Extract time (HH:MM) from a datetime string like "1899-12-30T07:00:00".
+ * Tee time ("1899-12-30T07:00:00", club wall-clock) as "7:00 AM".
  * Falls back to returning the original string if no time portion found.
  */
 export function formatTime(raw: string): string {
   if (!raw) return '';
-  if (raw.length >= 16 && raw[10] === 'T') return raw.slice(11, 16);
-  return raw;
+  const m = /T(\d{2}):(\d{2})/.exec(raw);
+  if (!m) return raw;
+  const h = Number(m[1]);
+  return `${h % 12 || 12}:${m[2]} ${h < 12 ? 'AM' : 'PM'}`;
 }
 
 /**

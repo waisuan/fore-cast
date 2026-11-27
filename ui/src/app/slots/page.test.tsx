@@ -106,7 +106,7 @@ describe('SlotsPage', () => {
     renderSlots();
 
     await waitFor(() => {
-      expect(screen.getByText(/scheduler is running/i)).toBeInTheDocument();
+      expect(screen.getByText(/auto-booking is running now/i)).toBeInTheDocument();
     });
     expect(screen.queryByRole('button', { name: /load slots/i })).not.toBeInTheDocument();
   });
@@ -200,13 +200,16 @@ describe('SlotsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/1 slot\(s\)/)).toBeInTheDocument();
+      expect(screen.getByText(/1 tee time$/)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /^book$/i }));
+    // Changing the picker after loading must not change which date gets booked.
+    setDate('2030-12-27');
+    fireEvent.click(screen.getByRole('button', { name: /^book /i }));
 
     await waitFor(() => {
       expect(screen.getByText(/Booked! ID: bid-99/)).toBeInTheDocument();
+      expect(screen.getByText(/Booked · ID bid-99/)).toBeInTheDocument();
     });
 
     expect(api.post).toHaveBeenCalledWith(
@@ -255,10 +258,10 @@ describe('SlotsPage', () => {
     fireEvent.click(screen.getByRole('button', { name: /load slots/i }));
 
     await waitFor(() => {
-      expect(screen.getByText(/1 slot\(s\)/)).toBeInTheDocument();
+      expect(screen.getByText(/1 tee time$/)).toBeInTheDocument();
     });
 
-    fireEvent.click(screen.getByRole('button', { name: /^book$/i }));
+    fireEvent.click(screen.getByRole('button', { name: /^book /i }));
 
     await waitFor(() => {
       expect(

@@ -717,7 +717,7 @@ func TestRun_StepsExplainTimeout(t *testing.T) {
 		texts = append(texts, s.Text)
 	}
 	assert.Equal(t, []string{
-		"PLC on 2026/03/04: 2 tee time(s) before your 8:15 AM cutoff.",
+		"PLC on Wed 4 Mar: 2 tee times before your 8:15 AM cutoff.",
 		"7:00 AM tee 1: This Flight Is Blocked",
 		"7:00 AM tee 1: booking failed: Tee Time was not reserve",
 		"7:08 AM tee 10: open.",

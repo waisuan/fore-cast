@@ -218,3 +218,32 @@ describe('HomeContent upcoming banner — alt course sub-line', () => {
     expect(alt.textContent).toMatch(/BRC/);
   });
 });
+
+describe('HomeContent last run and off state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('always shows the last run result with a link to its run log, even days later', async () => {
+    vi.mocked(api.get).mockResolvedValue(
+      basePayload({
+        last_run_status: 'failed',
+        last_run_message: '[PLC] no slot booked — last club reply: This Flight Is Blocked',
+        last_run_at: '2026-01-01T14:00:03Z',
+      }),
+    );
+    renderHome();
+
+    expect(await screen.findByRole('heading', { name: 'Last run booked nothing' })).toBeInTheDocument();
+    expect(screen.getByText(/last club reply: This Flight Is Blocked/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'See what happened' })).toHaveAttribute('href', '/history');
+  });
+
+  it('prompts to set up auto-booking when it is off', async () => {
+    vi.mocked(api.get).mockResolvedValue(basePayload({ enabled: false }));
+    renderHome();
+
+    expect(await screen.findByText('Auto-booking is off.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Set up auto-booking' })).toHaveAttribute('href', '/settings');
+  });
+});
