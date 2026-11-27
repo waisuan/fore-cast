@@ -26,6 +26,7 @@ export function mockPresetFull() {
       retry_interval: '1s',
       min_retry_interval: '0s',
       timeout: '10m',
+      min_timeout: '30s',
       booking_open: '21:59',
     },
     last_run_status: 'idle',

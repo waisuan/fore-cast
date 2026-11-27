@@ -70,6 +70,7 @@ const presetPayload = {
     retry_interval: '1s',
     min_retry_interval: '0s',
     timeout: '10m',
+    min_timeout: '30s',
     booking_open: '21:59',
   },
   last_run_status: 'idle',
@@ -125,6 +126,22 @@ describe('SettingsPage', () => {
         }),
       );
     });
+  });
+
+  it('rejects a timeout below the server minimum without saving', async () => {
+    renderSettings();
+
+    await waitFor(() => {
+      expect(screen.getByLabelText(/^timeout$/i)).toBeInTheDocument();
+    });
+
+    fireEvent.change(screen.getByLabelText(/^timeout$/i), { target: { value: '3s' } });
+    fireEvent.click(screen.getByRole('button', { name: /save settings/i }));
+
+    await waitFor(() => {
+      expect(screen.getByText(/timeout must be at least 30s/i)).toBeInTheDocument();
+    });
+    expect(api.put).not.toHaveBeenCalled();
   });
 
   it('does not render a default-course selector', async () => {

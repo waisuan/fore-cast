@@ -688,3 +688,18 @@ func TestPresetHandlerSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(PresetHandlerSuite))
 }
+
+func (s *PresetHandlerSuite) TestSavePreset_RejectsBadTimeout() {
+	for _, timeout := range []string{"3s", "29s", "abc"} {
+		s.mockSvc.EXPECT().GetPreset("u").Return(nil, nil)
+
+		body, _ := json.Marshal(PresetRequest{Timeout: timeout})
+		req := httptest.NewRequest(http.MethodPut, "/api/v1/preset", bytes.NewReader(body))
+		req.Header.Set("Content-Type", "application/json")
+		req = req.WithContext(context.WithUser(req.Context(), s.user))
+		rec := httptest.NewRecorder()
+		s.handler.SavePreset(rec, req)
+
+		s.Assert().Equal(http.StatusBadRequest, rec.Code, timeout)
+	}
+}

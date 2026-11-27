@@ -27,6 +27,7 @@ type PresetDefaults struct {
 	RetryInterval    string `json:"retry_interval"`
 	MinRetryInterval string `json:"min_retry_interval"`
 	Timeout          string `json:"timeout"`
+	MinTimeout       string `json:"min_timeout"`
 	BookingOpen      string `json:"booking_open"`
 }
 
@@ -89,6 +90,7 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		RetryInterval:    preset.DefaultRetryInterval,
 		MinRetryInterval: preset.MinRetryInterval,
 		Timeout:          preset.DefaultTimeout,
+		MinTimeout:       preset.MinTimeout,
 		BookingOpen:      preset.DefaultBookingOpen,
 	}
 
@@ -212,6 +214,12 @@ func (h *PresetHandler) SavePreset(w http.ResponseWriter, r *http.Request) {
 	}
 	if p.Timeout == "" {
 		p.Timeout = preset.DefaultTimeout
+	} else if d, err := time.ParseDuration(p.Timeout); err != nil {
+		http.Error(w, "invalid timeout: "+p.Timeout, http.StatusBadRequest)
+		return
+	} else if d < preset.MinTimeoutDuration {
+		http.Error(w, "timeout must be at least "+preset.MinTimeout, http.StatusBadRequest)
+		return
 	}
 	if p.BookingOpen == "" {
 		p.BookingOpen = preset.DefaultBookingOpen

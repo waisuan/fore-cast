@@ -220,6 +220,14 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		logger.Warn("invalid timeout, falling back to 10m", logger.String("user", p.UserName), logger.String("timeout", p.Timeout))
 		timeout = 10 * time.Minute
 	}
+	if timeout < preset.MinTimeoutDuration {
+		// Presets saved before the minimum existed (e.g. "3s") could never send a book.
+		logger.Warn("timeout below minimum, using minimum",
+			logger.String("user", p.UserName),
+			logger.Duration("timeout", timeout),
+			logger.Duration("min", preset.MinTimeoutDuration))
+		timeout = preset.MinTimeoutDuration
+	}
 	if d.Config.BookerDryRun && d.Config.BookerDryRunTimeout > 0 && timeout > d.Config.BookerDryRunTimeout {
 		timeout = d.Config.BookerDryRunTimeout
 	}

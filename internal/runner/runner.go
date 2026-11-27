@@ -364,6 +364,10 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		if resp.Status && cfg.CheckToBookDelay > 0 {
 			select {
 			case <-ctx.Done():
+				logger.Warn(tag+" deadline hit before book sent",
+					logger.String("user", cfg.UserName),
+					logger.String("course", slot.CourseID),
+					logger.Duration("check_to_book_delay", cfg.CheckToBookDelay))
 				return false, Result{}, false, waitRetryOnly, ctx.Err()
 			case <-time.After(cfg.CheckToBookDelay):
 			}
