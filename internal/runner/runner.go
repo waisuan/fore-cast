@@ -317,6 +317,7 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 				logger.String("user", cfg.UserName),
 				logger.String("course", slot.CourseID),
 				logger.Err(err))
+			log.lastReply = err.Error()
 			log.add("%s: could not check the slot (%v). Skipping it.", name, err)
 			allReserved = false
 			continue

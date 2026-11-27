@@ -89,7 +89,7 @@ export const mockHistoryResponse = {
       status: 'success',
       message: 'Booked (mock)',
       steps: [
-        { at: '2026-04-08T14:00:00Z', text: 'PLC on 2026/04/15: 12 tee time(s) before your 8:15 AM cutoff.' },
+        { at: '2026-04-08T14:00:00Z', text: 'PLC on 2026/04/08: 12 tee time(s) before your 8:15 AM cutoff.' },
         { at: '2026-04-08T14:00:01Z', text: '7:30 AM tee 1: open.' },
         { at: '2026-04-08T14:00:01Z', text: '7:30 AM tee 1: waiting 3s before booking (the club requires it).' },
         { at: '2026-04-08T14:00:04Z', text: '7:30 AM tee 1: booked. Booking ID MOCK-001.' },

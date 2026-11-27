@@ -300,6 +300,13 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	resultsCh := make(chan runner.Result, len(courses))
 	for _, c := range courses {
 		go func() {
+			// A panic must not kill the other presets' runs or leave this one stuck "running".
+			defer func() {
+				if rec := recover(); rec != nil {
+					logger.Error("course worker panicked", logger.String("user", p.UserName), logger.String("course", c))
+					resultsCh <- runner.Result{Status: runner.StatusFailed, CourseID: c, Message: fmt.Sprintf("[%s] internal error: %v", c, rec)}
+				}
+			}()
 			cfg := baseCfg
 			cfg.CourseID = c
 			// runner.Run always populates Result.Status + Message even on
