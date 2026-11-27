@@ -71,7 +71,7 @@ These are the cron defaults. Tests leave the extra waits at zero and only use th
 | Rapid backoff | 3s → 6s → 12s → 24s | Check says *Rapid attempts* / *temporarily locked*. No book; wait, then check again. Consecutive Rapids double the wait, capped at 24s. A later window-closed or normal pass resets to 3s. |
 | Session refresh | retry interval only (1s) | CODE103 / invalid token: scheduler logs in again (mutex so BRC and PLC share one login) and continues until the preset timeout. No extra 5s — a new token is usable immediately. If the next check is Rapid, Rapid backoff applies. UI and tests without a refresh callback still fail fast. |
 
-`max(retry interval, special wait)` is what actually sleeps. Start calling the club at **22:00:00** or later in Settings so the first burst is not "open after 10pm" plus Rapid. Fallback if a preset has no `booking_open` is `SCHEDULER_BOOKING_WAIT_HOUR_MY` / `_MINUTE_MY` (21:59).
+`max(retry interval, special wait)` is what actually sleeps. Start calling the club at **22:00:00** or later in Settings so the first burst is not "open after 10pm" plus Rapid. A missing or invalid `booking_open` falls back to 21:59:00.
 
 ## Admin registration
 
@@ -103,7 +103,6 @@ ENCRYPTION_KEY=<output of: openssl rand -hex 32>
 | `ENCRYPTION_KEY` | *(required for presets)* | 64-char hex key for AES-256-GCM |
 | `MAX_CONCURRENT_PRESETS` | `5` | Max presets the scheduler processes in parallel |
 | `SCHEDULER_TXN_DATE` | *(none)* | Override target date (YYYY/MM/DD); empty = 1 week ahead. Useful for testing. |
-| `SCHEDULER_BOOKING_WAIT_HOUR_MY` / `_MINUTE_MY` | `21` / `59` | Fallback club-call start if a preset has no `booking_open` (Settings). |
 | `BOOKER_DRY_RUN` | `false` | Mock Booker API (local testing only) |
 | `BOOKER_DRY_RUN_SCENARIO` | `timeout` | `success` \| `timeout` \| `empty` |
 | `BOOKER_DRY_RUN_TIMEOUT` | *(none)* | Cap preset timeout when dry-run (e.g. `30s`) |
