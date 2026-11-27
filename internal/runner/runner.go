@@ -4,7 +4,7 @@ import (
 	"context"
 	"errors"
 	"fmt"
-	"strings"
+	"slices"
 	"time"
 
 	"github.com/waisuan/alfred/internal/booker"
@@ -57,7 +57,6 @@ type Config struct {
 	// window-closed and rapid waits replace it.
 	RetryInterval time.Duration
 	Waits         Waits
-	Debug         bool
 	// RefreshToken is called after CODE103 so the run can continue with a new
 	// session. Nil means fail on the first invalid token.
 	RefreshToken func(ctx context.Context) (string, error)
@@ -92,18 +91,20 @@ type stepLog struct {
 	lastReply string
 }
 
+// add keeps the first step (slot count) and the latest ones: the end of a run
+// is what explains its outcome.
 func (l *stepLog) add(format string, args ...any) {
-	if len(l.steps) >= maxSteps {
-		l.dropped++
-		return
-	}
 	l.steps = append(l.steps, Step{At: time.Now(), Text: fmt.Sprintf(format, args...)})
+	if len(l.steps) > maxSteps {
+		l.steps = slices.Delete(l.steps, 1, 2)
+		l.dropped++
+	}
 }
 
 // finish appends the closing line even when the log is full.
 func (l *stepLog) finish(text string) []Step {
 	if l.dropped > 0 {
-		l.steps = append(l.steps, Step{At: time.Now(), Text: fmt.Sprintf("… %d more steps not shown", l.dropped)})
+		l.steps = slices.Insert(l.steps, 1, Step{At: l.steps[1].At, Text: fmt.Sprintf("… %d earlier steps not shown", l.dropped)})
 	}
 	return append(l.steps, Step{At: time.Now(), Text: text})
 }
@@ -119,21 +120,12 @@ const (
 )
 
 func classify(reason string) reply {
-	low := strings.ToLower(reason)
-	has := func(phrases ...string) bool {
-		for _, p := range phrases {
-			if strings.Contains(low, p) {
-				return true
-			}
-		}
-		return false
-	}
 	switch {
-	case has("the flight has already been reserved"):
+	case booker.IsReserved(reason):
 		return replyReserved
-	case has("rapid attempts", "temporarily locked"):
+	case booker.IsRapidLock(reason):
 		return replyRapid
-	case has("will be open after", "not allowed during this time range"):
+	case booker.IsWindowClosed(reason):
 		return replyWindowClosed
 	}
 	return replyOther
@@ -183,7 +175,7 @@ func run(ctx context.Context, cfg Config, client booker.ClientInterface, log *st
 	slots = slotutil.SlotsBeforeCutoff(slots, cfg.CutoffTeeTime)
 	log.add("%s on %s: %d tee time(s) before your %s cutoff.", cfg.CourseID, cfg.TxnDate, len(slots), cutoff)
 	if len(slots) == 0 {
-		msg := fmt.Sprintf("no slots available before %s cutoff", slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime))
+		msg := fmt.Sprintf("no slots available before %s cutoff", cutoff)
 		r := resultWithCourse(cfg, StatusNoSlots, msg)
 		return r, errors.New(r.Message)
 	}
@@ -202,13 +194,17 @@ func run(ctx context.Context, cfg Config, client booker.ClientInterface, log *st
 				return r, fmt.Errorf("%s: %w", r.Message, passErr)
 			}
 			log.add("Club session expired; logged in again.")
-			outcome = replyOther // a new token is usable straight away
+			// A new token is usable straight away; keep the rapid streak.
+			if sleepCtx(ctx, cfg.RetryInterval) != nil {
+				return resultForDone(cfg, ctx, log)
+			}
+			continue
 		case passErr != nil:
 			return resultForDone(cfg, ctx, log)
 		case res != nil:
 			return *res, nil
 		case outcome == replyReserved:
-			msg := fmt.Sprintf("all tee times before %s cutoff already reserved", slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime))
+			msg := fmt.Sprintf("all tee times before %s cutoff already reserved", cutoff)
 			r := resultWithCourse(cfg, StatusFailed, msg)
 			return r, errors.New(r.Message)
 		}
@@ -340,9 +336,6 @@ func runOnePass(ctx context.Context, client booker.ClientInterface, cfg *Config,
 		} else {
 			log.lastReply = reason
 			log.add("%s: %s", name, reason)
-		}
-
-		if !resp.Status {
 			if booker.IsInvalidToken(resp.Reason) {
 				return nil, replyOther, fmt.Errorf("tee time status: %w", booker.ErrInvalidToken)
 			}
@@ -430,7 +423,7 @@ func bookSlot(client booker.ClientInterface, cfg *Config, slot *booker.TeeTimeSl
 		TotalGuest: 4,
 		IPaddress:  cfg.UserName,
 		Holes:      18,
-	}, cfg.Debug)
+	}, false)
 	if err != nil {
 		return "", err
 	}

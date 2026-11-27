@@ -134,6 +134,21 @@ export function formatDateTimeShortMY(iso: string | Date): string {
   });
 }
 
+const MY_TIME_SEC_FMT = new Intl.DateTimeFormat('en-GB', {
+  timeZone: MY_TIMEZONE,
+  hour: '2-digit',
+  minute: '2-digit',
+  second: '2-digit',
+});
+
+/**
+ * Time of day with seconds in Malaysia time (e.g. "22:00:03"), for run-log steps.
+ */
+export function formatTimeSecMY(iso: string): string {
+  const d = new Date(iso);
+  return isNaN(d.getTime()) ? '' : MY_TIME_SEC_FMT.format(d);
+}
+
 /**
  * Extract time (HH:MM) from a datetime string like "1899-12-30T07:00:00".
  * Falls back to returning the original string if no time portion found.

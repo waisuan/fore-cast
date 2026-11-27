@@ -30,7 +30,6 @@ func baseCfg(token string) Config {
 		CourseID:      "PLC",
 		CutoffTeeTime: "1899-12-30T08:15:00",
 		RetryInterval: time.Millisecond,
-		Debug:         false,
 	}
 }
 
@@ -493,7 +492,7 @@ func TestRun_InvalidToken_GetSlots_RefreshThenBooks(t *testing.T) {
 	assert.Equal(t, "B-get", result.BookingID)
 }
 
-func TestRun_AccountWideCooldown_UsedAfterWindowClosed(t *testing.T) {
+func TestRun_WindowClosedWait_UsedAfterWindowClosed(t *testing.T) {
 	t.Parallel()
 	ctrl := gomock.NewController(t)
 	defer ctrl.Finish()
@@ -574,6 +573,52 @@ func TestRun_RapidBackoff_DoublesThenBooks(t *testing.T) {
 	require.NoError(t, err)
 	assert.Equal(t, StatusSuccess, result.Status)
 	assert.GreaterOrEqual(t, elapsed, 60*time.Millisecond, "20ms then 40ms Rapid backoff")
+}
+
+func TestRun_RapidBackoff_KeptAcrossTokenRefresh(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	cfg.RetryInterval = time.Millisecond
+	cfg.Waits.RapidInitial = 2 * time.Millisecond
+	cfg.RefreshToken = func(context.Context) (string, error) { return "tok", nil }
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	rapid := &booker.CheckTeeTimeStatusResponse{Reason: "Rapid attempts. Your account is temporarily locked."}
+	replies := []*booker.CheckTeeTimeStatusResponse{
+		rapid, rapid, {Reason: "CODE103 - Invalid Token"}, rapid, {Status: true},
+	}
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).DoAndReturn(
+		func(string, booker.GolfCheckTeeTimeStatusInput) (*booker.CheckTeeTimeStatusResponse, error) {
+			r := replies[0]
+			replies = replies[1:]
+			return r, nil
+		},
+	).Times(5)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B-rapid"}},
+	}, nil)
+
+	result, err := Run(testCtx(t, defaultTestTimeout), cfg, mock)
+	require.NoError(t, err)
+	var waits []string
+	for _, s := range result.Steps {
+		if strings.HasPrefix(s.Text, "Club rate limit hit") {
+			waits = append(waits, s.Text)
+		}
+	}
+	assert.Equal(t, []string{
+		"Club rate limit hit; waiting 2ms before trying again.",
+		"Club rate limit hit; waiting 4ms before trying again.",
+		"Club rate limit hit; waiting 8ms before trying again.",
+	}, waits, "a re-login does not reset the rapid backoff")
 }
 
 func TestRapidWait_DoublesAndCaps(t *testing.T) {
@@ -690,6 +735,9 @@ func TestStepLog_CapsAndKeepsSummary(t *testing.T) {
 	}
 	steps := l.finish("Done.")
 	require.Len(t, steps, maxSteps+2)
-	assert.Equal(t, "… 5 more steps not shown", steps[maxSteps].Text)
+	assert.Equal(t, "step 0", steps[0].Text)
+	assert.Equal(t, "… 5 earlier steps not shown", steps[1].Text)
+	assert.Equal(t, "step 6", steps[2].Text)
+	assert.Equal(t, fmt.Sprintf("step %d", maxSteps+4), steps[maxSteps].Text)
 	assert.Equal(t, "Done.", steps[maxSteps+1].Text)
 }

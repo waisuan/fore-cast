@@ -209,6 +209,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [defaults, setDefaults] = useState<PresetDefaults | null>(null);
+  const minTimeout = defaults?.min_timeout ?? '30s';
   const [cutoff, setCutoff] = useState('');
   const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
@@ -330,7 +331,6 @@ export default function SettingsPage() {
       }
       const timeout = timeoutVal.trim();
       const timeoutMs = parseDurationMs(timeout);
-      const minTimeout = defaults?.min_timeout ?? '30s';
       if (timeout !== '' && timeoutMs === null) {
         addToast('Invalid timeout format (e.g. 10m, 1h, 30s)', 'error');
         setSaving(false);
@@ -592,7 +592,7 @@ export default function SettingsPage() {
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
             Maximum time to keep repeating full passes before giving up. Each booking waits 3s after
-            the slot check, so short timeouts never book. Min: {defaults?.min_timeout ?? '30s'}. Default:{' '}
+            the slot check, so short timeouts never book. Min: {minTimeout}. Default:{' '}
             {defaults?.timeout}
           </p>
           <input

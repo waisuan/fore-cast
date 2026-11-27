@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { formatDate, formatDateTimeShortMY, MY_TIMEZONE } from '@/utils/date';
+import { formatDate, formatDateTimeShortMY, formatTimeSecMY } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 
@@ -24,13 +24,6 @@ interface RunStep {
   text: string;
 }
 
-const stepTime = new Intl.DateTimeFormat('en-GB', {
-  timeZone: MY_TIMEZONE,
-  hour: '2-digit',
-  minute: '2-digit',
-  second: '2-digit',
-});
-
 /** Collapsible step-by-step log of what the scheduler did for this attempt. */
 function RunLog({ steps }: { steps?: RunStep[] | null }) {
   if (!steps?.length) return null;
@@ -43,7 +36,7 @@ function RunLog({ steps }: { steps?: RunStep[] | null }) {
         {steps.map((s, i) => (
           <li key={i} className="flex gap-2 text-gray-700 dark:text-gray-300">
             <time dateTime={s.at} className="shrink-0 font-mono text-xs leading-5 text-gray-500 dark:text-gray-400">
-              {stepTime.format(new Date(s.at))}
+              {formatTimeSecMY(s.at)}
             </time>
             <span className="break-words">{s.text}</span>
           </li>
