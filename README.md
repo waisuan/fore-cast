@@ -16,7 +16,7 @@ Course is selected automatically based on the day of the week (configurable per 
 
 ## Prerequisites
 
-- Go 1.24.3+
+- Go 1.25+
 - Docker (local Postgres + integration tests)
 - Node.js 18+ and npm (Next.js frontend)
 - Club member credentials
