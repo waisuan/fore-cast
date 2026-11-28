@@ -2,6 +2,9 @@ package main
 
 import (
 	"database/sql"
+	"encoding/json"
+	"fmt"
+	"runtime"
 	"testing"
 	"time"
 
@@ -226,4 +229,83 @@ func TestOutcomeMessage(t *testing.T) {
 			assert.Equal(t, tc.wantBooked, booked)
 		})
 	}
+}
+
+func liveTexts(t *testing.T, batches []json.RawMessage) []string {
+	t.Helper()
+	var out []string
+	for _, b := range batches {
+		var steps []runner.Step
+		if err := json.Unmarshal(b, &steps); err != nil {
+			t.Fatal(err)
+		}
+		for _, s := range steps {
+			out = append(out, s.Text)
+		}
+	}
+	return out
+}
+
+func TestLiveLog_FlushesAllStepsInOrderOnClose(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	svc := preset.NewMockService(ctrl)
+	var batches []json.RawMessage
+	svc.EXPECT().AppendLiveSteps("u", gomock.Any()).DoAndReturn(func(_ string, b json.RawMessage) error {
+		batches = append(batches, b)
+		return nil
+	}).AnyTimes()
+
+	l := startLiveLog(svc, "u", time.Hour) // no ticks: everything lands on close
+	for _, s := range []string{"a", "b", "c"} {
+		l.add(runner.Step{Text: s})
+	}
+	l.close()
+	assert.Equal(t, []string{"a", "b", "c"}, liveTexts(t, batches))
+}
+
+func TestLiveLog_OverCapKeepsTheOutcome(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	svc := preset.NewMockService(ctrl)
+	var batches []json.RawMessage
+	svc.EXPECT().AppendLiveSteps("u", gomock.Any()).DoAndReturn(func(_ string, b json.RawMessage) error {
+		batches = append(batches, b)
+		return nil
+	}).AnyTimes()
+
+	l := startLiveLog(svc, "u", time.Millisecond)
+	for i := 0; i < liveLogMax+20; i++ {
+		l.add(runner.Step{Text: fmt.Sprintf("s%d", i)})
+		for len(l.ch) > 0 { // let the writer drain; add drops when the buffer is full
+			runtime.Gosched()
+		}
+	}
+	l.add(runner.Step{Text: "Done: booked."})
+	l.close()
+
+	texts := liveTexts(t, batches)
+	assert.Equal(t, "Done: booked.", texts[len(texts)-1])
+	assert.Contains(t, texts, "… 16 steps not shown here; see History")
+	assert.LessOrEqual(t, len(texts), liveLogMax+6)
+}
+
+func TestLiveLog_AddNeverBlocks(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	svc := preset.NewMockService(ctrl)
+	release := make(chan struct{})
+	svc.EXPECT().AppendLiveSteps("u", gomock.Any()).DoAndReturn(func(string, json.RawMessage) error {
+		<-release // a stuck database
+		return nil
+	}).AnyTimes()
+
+	l := startLiveLog(svc, "u", time.Millisecond)
+	start := time.Now()
+	for i := 0; i < 2000; i++ {
+		l.add(runner.Step{Text: "x"})
+	}
+	assert.Less(t, time.Since(start), 100*time.Millisecond, "add must not wait for the database")
+	close(release)
+	l.close()
 }

@@ -19,6 +19,7 @@ import { useToast } from '@/contexts/ToastContext';
 import SchedulerRunningBanner from './SchedulerRunningBanner';
 import CourseOverrideBanner from './CourseOverrideBanner';
 import Spinner from './Spinner';
+import RunLog, { type RunStep } from './RunLog';
 
 const LAST_RUN_STYLE: Record<string, { label: string; box: string }> = {
   success: {
@@ -35,7 +36,17 @@ const LAST_RUN_STYLE: Record<string, { label: string; box: string }> = {
   },
 };
 
-function LastRunCard({ status, message, at }: { status: string; message: string; at: string }) {
+function LastRunCard({
+  status,
+  message,
+  at,
+  steps,
+}: {
+  status: string;
+  message: string;
+  at: string;
+  steps: RunStep[];
+}) {
   const style = LAST_RUN_STYLE[status] ?? LAST_RUN_STYLE.failed;
   return (
     <section aria-label="Last auto-booking run" className={`rounded-lg border px-4 py-3 text-sm ${style.box}`}>
@@ -46,8 +57,13 @@ function LastRunCard({ status, message, at }: { status: string; message: string;
         </time>
       </div>
       {message && <p className="mt-1 break-words">{message}</p>}
+      {steps.length > 0 && (
+        <div className="mt-2 rounded bg-white/70 px-3 pb-2 pt-1 dark:bg-gray-900/40">
+          <RunLog steps={steps} />
+        </div>
+      )}
       <Link href="/history" className="mt-2 inline-block font-medium underline underline-offset-2">
-        See what happened
+        All runs in History
       </Link>
     </section>
   );
@@ -70,6 +86,7 @@ interface PresetStatus {
   override_until: string | null;
   skip_next_run: boolean;
   alt_course_days: string[];
+  live_steps: RunStep[];
 }
 
 export default function HomeContent() {
@@ -92,6 +109,7 @@ export default function HomeContent() {
           override_until: res.override_until ?? null,
           skip_next_run: res.skip_next_run ?? false,
           alt_course_days: Array.isArray(res.alt_course_days) ? res.alt_course_days : [],
+          live_steps: Array.isArray(res.live_steps) ? res.live_steps : [],
         });
       } catch (e) {
         setStatus(null);
@@ -222,9 +240,22 @@ export default function HomeContent() {
   return (
     <div className="space-y-4">
       {schedulerRunning && (
-        <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+        <section aria-label="Run in progress" className="space-y-2">
+          <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+          <div className="rounded-lg border border-gray-200 bg-white px-4 py-3 dark:border-gray-700 dark:bg-gray-800">
+            <h2 className="text-sm font-semibold text-gray-900 dark:text-white">Live run log</h2>
+            <RunLog steps={status?.live_steps} live />
+          </div>
+        </section>
       )}
-      {showLastRun && <LastRunCard status={last_run_status!} message={last_run_message ?? ''} at={last_run_at!} />}
+      {showLastRun && (
+        <LastRunCard
+          status={last_run_status!}
+          message={last_run_message ?? ''}
+          at={last_run_at!}
+          steps={status?.live_steps ?? []}
+        />
+      )}
       {status && !enabled && !schedulerRunning && (
         <div className="flex flex-col gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
           <p>

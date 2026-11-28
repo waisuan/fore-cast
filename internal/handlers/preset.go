@@ -56,6 +56,8 @@ type PresetResponse struct {
 	// override is active. Omitted from the JSON response when unset (matches
 	// the convention used by OverrideUntil / LastRunAt).
 	AltCourseDays []string `json:"alt_course_days,omitempty"`
+	// LiveSteps is the run log of the current or last scheduler run, streamed while it runs.
+	LiveSteps json.RawMessage `json:"live_steps"`
 }
 
 // PresetRequest is the JSON body for PUT /api/v1/preset. See preset.Preset for
@@ -100,7 +102,7 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 
-	resp := PresetResponse{Defaults: defaults, LastRunStatus: string(preset.RunStatusIdle)}
+	resp := PresetResponse{Defaults: defaults, LastRunStatus: string(preset.RunStatusIdle), LiveSteps: json.RawMessage(`[]`)}
 	if existing == nil {
 		resp.UserName = u.UserName
 		resp.Cutoff = preset.DefaultCutoff
@@ -122,6 +124,9 @@ func (h *PresetHandler) GetPreset(w http.ResponseWriter, r *http.Request) {
 		resp.Enabled = existing.Enabled
 		resp.LastRunStatus = existing.LastRunStatus
 		resp.LastRunMessage = existing.LastRunMessage
+		if len(existing.LiveSteps) > 0 {
+			resp.LiveSteps = existing.LiveSteps
+		}
 		if existing.LastRunAt.Valid {
 			t := existing.LastRunAt.Time.Format("2006-01-02T15:04:05Z07:00")
 			resp.LastRunAt = &t

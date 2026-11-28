@@ -5,6 +5,7 @@
 package preset
 
 import (
+	json "encoding/json"
 	reflect "reflect"
 
 	gomock "github.com/golang/mock/gomock"
@@ -31,6 +32,20 @@ func NewMockService(ctrl *gomock.Controller) *MockService {
 // EXPECT returns an object that allows the caller to indicate expected use.
 func (m *MockService) EXPECT() *MockServiceMockRecorder {
 	return m.recorder
+}
+
+// AppendLiveSteps mocks base method.
+func (m *MockService) AppendLiveSteps(userName string, steps json.RawMessage) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "AppendLiveSteps", userName, steps)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// AppendLiveSteps indicates an expected call of AppendLiveSteps.
+func (mr *MockServiceMockRecorder) AppendLiveSteps(userName, steps interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "AppendLiveSteps", reflect.TypeOf((*MockService)(nil).AppendLiveSteps), userName, steps)
 }
 
 // ClearCancelRequested mocks base method.
@@ -160,6 +175,20 @@ func (m *MockService) RequestSkipNextRun(userName string) error {
 func (mr *MockServiceMockRecorder) RequestSkipNextRun(userName interface{}) *gomock.Call {
 	mr.mock.ctrl.T.Helper()
 	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "RequestSkipNextRun", reflect.TypeOf((*MockService)(nil).RequestSkipNextRun), userName)
+}
+
+// ResetLiveSteps mocks base method.
+func (m *MockService) ResetLiveSteps(userName string) error {
+	m.ctrl.T.Helper()
+	ret := m.ctrl.Call(m, "ResetLiveSteps", userName)
+	ret0, _ := ret[0].(error)
+	return ret0
+}
+
+// ResetLiveSteps indicates an expected call of ResetLiveSteps.
+func (mr *MockServiceMockRecorder) ResetLiveSteps(userName interface{}) *gomock.Call {
+	mr.mock.ctrl.T.Helper()
+	return mr.mock.ctrl.RecordCallWithMethodType(mr.mock, "ResetLiveSteps", reflect.TypeOf((*MockService)(nil).ResetLiveSteps), userName)
 }
 
 // UpdatePresetRunStatus mocks base method.

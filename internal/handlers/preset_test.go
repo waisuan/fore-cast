@@ -88,6 +88,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 			NtfyTopic:     sql.NullString{String: "my-topic", Valid: true},
 			Enabled:       true,
 			UpdatedAt:     time.Now(),
+			LiveSteps:     json.RawMessage(`[{"at":"2026-11-28T14:00:01Z","text":"Logged in to the club."}]`),
 		}, nil)
 
 	req := httptest.NewRequest(http.MethodGet, "/api/v1/preset", nil)
@@ -107,6 +108,7 @@ func (s *PresetHandlerSuite) TestGetPreset_Found() {
 	s.Assert().Equal("my-topic", resp.NtfyTopic)
 	s.Assert().True(resp.EnableNotifications)
 	s.Assert().True(resp.Enabled)
+	s.Assert().JSONEq(`[{"at":"2026-11-28T14:00:01Z","text":"Logged in to the club."}]`, string(resp.LiveSteps))
 
 	s.Assert().Equal(preset.DefaultCutoff, resp.Defaults.Cutoff)
 	s.Assert().Equal(preset.DefaultRetryInterval, resp.Defaults.RetryInterval)

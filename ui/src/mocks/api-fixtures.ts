@@ -35,6 +35,7 @@ export function mockPresetFull() {
     override_course: '',
     override_until: null as string | null,
     skip_next_run: false,
+    live_steps: [] as { at: string; text: string; course?: string }[],
   };
 }
 
