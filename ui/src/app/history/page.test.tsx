@@ -84,6 +84,6 @@ describe('HistoryPage', () => {
       expect(screen.getAllByText('What happened (2 steps)').length).toBeGreaterThan(0);
     });
     expect(screen.getAllByText('7:37 AM tee 1: This Flight Is Blocked').length).toBeGreaterThan(0);
-    expect(screen.getAllByText('22:00:01').length).toBeGreaterThan(0);
+    expect(screen.getAllByText('10:00:01 PM').length).toBeGreaterThan(0);
   });
 });

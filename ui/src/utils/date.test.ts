@@ -31,7 +31,10 @@ describe('toApiDate', () => {
 describe('formatTime', () => {
   it.each([
     ['', ''],
-    ['1899-12-30T07:37:00', '07:37'],
+    ['1899-12-30T07:37:00', '7:37 AM'],
+    ['1899-12-30T13:29:00', '1:29 PM'],
+    ['1899-12-30T00:05:00', '12:05 AM'],
+    ['1899-12-30T12:00:00', '12:00 PM'],
     ['no-t-here', 'no-t-here'],
   ])('formats %j as %j', (input, expected) => {
     expect(formatTime(input)).toBe(expected);
@@ -67,6 +70,10 @@ describe('formatDateTimeMY', () => {
   it('accepts a Date object', () => {
     const out = formatDateTimeMY(new Date('2026-01-01T12:00:00.000Z'));
     expect(out).toMatch(/2026/);
+  });
+
+  it('uses the app-wide 12-hour clock', () => {
+    expect(formatDateTimeMY('2026-11-27T14:00:03Z')).toBe('Fri, 27 Nov 2026, 10:00 PM');
   });
 });
 

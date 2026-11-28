@@ -14,8 +14,8 @@ export default function SchedulerRunningBanner({
   return (
     <div className="flex flex-col gap-3 rounded-lg border border-blue-200 bg-blue-50 px-4 py-3 text-sm text-blue-800 sm:flex-row sm:items-center sm:justify-between dark:border-blue-800 dark:bg-blue-900/30 dark:text-blue-300">
       <p>
-        Scheduler is running. Slots and booking require 3rd party access and are unavailable.
-        You can cancel the run below.
+        <strong className="font-semibold">Auto-booking is running now.</strong> Manual booking is paused
+        until it finishes; the result and a step-by-step log appear here and in History.
       </p>
       <button
         type="button"

@@ -20,6 +20,39 @@ import SchedulerRunningBanner from './SchedulerRunningBanner';
 import CourseOverrideBanner from './CourseOverrideBanner';
 import Spinner from './Spinner';
 
+const LAST_RUN_STYLE: Record<string, { label: string; box: string }> = {
+  success: {
+    label: 'Last run booked a tee time',
+    box: 'border-green-300 bg-green-50 text-green-900 dark:border-green-800 dark:bg-green-900/30 dark:text-green-200',
+  },
+  cancelled: {
+    label: 'Last run was cancelled',
+    box: 'border-amber-300 bg-amber-50 text-amber-900 dark:border-amber-800 dark:bg-amber-900/30 dark:text-amber-200',
+  },
+  failed: {
+    label: 'Last run booked nothing',
+    box: 'border-red-300 bg-red-50 text-red-900 dark:border-red-800 dark:bg-red-900/30 dark:text-red-200',
+  },
+};
+
+function LastRunCard({ status, message, at }: { status: string; message: string; at: string }) {
+  const style = LAST_RUN_STYLE[status] ?? LAST_RUN_STYLE.failed;
+  return (
+    <section aria-label="Last auto-booking run" className={`rounded-lg border px-4 py-3 text-sm ${style.box}`}>
+      <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+        <h2 className="text-base font-semibold">{style.label}</h2>
+        <time dateTime={at} className="text-xs">
+          {formatDateTimeMY(at)}
+        </time>
+      </div>
+      {message && <p className="mt-1 break-words">{message}</p>}
+      <Link href="/history" className="mt-2 inline-block font-medium underline underline-offset-2">
+        See what happened
+      </Link>
+    </section>
+  );
+}
+
 function AltCourseSubline({ course, className }: { course: string; className: string }) {
   return (
     <p className={className}>
@@ -42,7 +75,6 @@ interface PresetStatus {
 export default function HomeContent() {
   const { addToast } = useToast();
   const [status, setStatus] = useState<PresetStatus | null>(null);
-  const [dismissedId, setDismissedId] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
   const [skipBusy, setSkipBusy] = useState(false);
 
@@ -126,22 +158,14 @@ export default function HomeContent() {
     skip_next_run,
     alt_course_days = [],
   } = status ?? {};
-  const isRecent = last_run_at
-    ? Date.now() - new Date(last_run_at).getTime() < 23 * 60 * 60 * 1000
-    : false;
-  const bannerId =
-    last_run_status === 'running'
-      ? 'running'
-      : last_run_at && last_run_status
-        ? `${last_run_at}-${last_run_status}`
-        : null;
-  const showBanner =
-    enabled &&
-    last_run_status &&
+  const lastRunAtValid = !!last_run_at && !isNaN(new Date(last_run_at).getTime());
+  // Always show the last result: "did tonight's run work?" is the main reason to open the app.
+  const showLastRun =
+    !!status &&
+    lastRunAtValid &&
+    !!last_run_status &&
     last_run_status !== 'idle' &&
-    last_run_status !== 'running' &&
-    isRecent &&
-    bannerId !== dismissedId;
+    last_run_status !== 'running';
 
   const schedulerRunning = last_run_status === 'running';
 
@@ -197,11 +221,23 @@ export default function HomeContent() {
 
   return (
     <div className="space-y-4">
-      <p className="text-sm text-gray-600 dark:text-gray-400">
-        Having trouble loading slots or your bookings? Try logging out (menu above) and signing in again to refresh your session.
-      </p>
       {schedulerRunning && (
         <SchedulerRunningBanner cancelLoading={cancelLoading} onCancel={cancelRun} />
+      )}
+      {showLastRun && <LastRunCard status={last_run_status!} message={last_run_message ?? ''} at={last_run_at!} />}
+      {status && !enabled && !schedulerRunning && (
+        <div className="flex flex-col gap-3 rounded-lg border border-gray-300 bg-white px-4 py-3 text-sm text-gray-700 sm:flex-row sm:items-center sm:justify-between dark:border-gray-700 dark:bg-gray-800 dark:text-gray-300">
+          <p>
+            <strong className="font-semibold text-gray-900 dark:text-white">Auto-booking is off.</strong>{' '}
+            Turn it on to book a tee time 7 days ahead every night at {SCHEDULER_FIRE_LABEL_MY}.
+          </p>
+          <Link
+            href="/settings"
+            className="inline-flex min-h-11 shrink-0 items-center justify-center rounded bg-blue-600 px-4 font-medium text-white hover:bg-blue-700"
+          >
+            Set up auto-booking
+          </Link>
+        </div>
       )}
       {upcoming && (
         <div
@@ -279,41 +315,6 @@ export default function HomeContent() {
           overrideUntil={override_until ?? null}
         />
       )}
-      {showBanner && (
-        <div
-          className={`relative rounded-lg border px-4 py-3 pr-10 text-sm ${
-            last_run_status === 'success'
-              ? 'border-green-200 bg-green-50 text-green-800 dark:border-green-800 dark:bg-green-900/30 dark:text-green-300'
-              : 'border-red-200 bg-red-50 text-red-800 dark:border-red-800 dark:bg-red-900/30 dark:text-red-300'
-          }`}
-        >
-          <button
-            type="button"
-            onClick={() => bannerId && setDismissedId(bannerId)}
-            className="absolute right-2 top-2 rounded p-1 opacity-70 hover:opacity-100 focus:outline-none focus:ring-2 focus:ring-offset-1"
-            aria-label="Dismiss"
-          >
-            <svg className="h-4 w-4" fill="none" stroke="currentColor" viewBox="0 0 24 24">
-              <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={2} d="M6 18L18 6M6 6l12 12" />
-            </svg>
-          </button>
-          <div className="flex items-center gap-2">
-            <span className="font-medium">
-              {last_run_status === 'success'
-                ? 'Last run: booked successfully'
-                : 'Last run: failed'}
-            </span>
-          </div>
-          {last_run_message && (
-            <p className="mt-1 text-xs opacity-80">{last_run_message}</p>
-          )}
-          {last_run_at && !isNaN(new Date(last_run_at).getTime()) && (
-            <p className="mt-1 text-xs opacity-60">
-              {formatDateTimeMY(last_run_at)}
-            </p>
-          )}
-        </div>
-      )}
       <nav className="flex flex-col gap-3 sm:flex-row sm:gap-4">
         <Link
           href="/slots"
@@ -328,6 +329,9 @@ export default function HomeContent() {
           My bookings
         </Link>
       </nav>
+      <p className="text-xs text-gray-500 dark:text-gray-400">
+        Slots or bookings not loading? Log out and sign in again to refresh your club session.
+      </p>
     </div>
   );
 }
