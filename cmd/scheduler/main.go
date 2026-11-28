@@ -3,14 +3,15 @@ package main
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"fmt"
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"time"
 
-	"github.com/waisuan/alfred/internal/booker"
 	"github.com/waisuan/alfred/internal/crypto"
 	"github.com/waisuan/alfred/internal/deps"
 	"github.com/waisuan/alfred/internal/history"
@@ -36,12 +37,9 @@ func presetBookingOpen(p preset.Preset) string {
 func sleepUntilBookingOpen(cfg *deps.Config, bookingOpen string) {
 	h, mi, sec, err := slotutil.ParseClockHM(bookingOpen)
 	if err != nil {
-		h, mi = cfg.SchedulerBookingWaitHourMy, cfg.SchedulerBookingWaitMinuteMy
-		sec = 0
-		if strings.TrimSpace(bookingOpen) != "" {
-			logger.Warn("invalid booking_open, using env wait time",
-				logger.String("booking_open", bookingOpen), logger.Err(err))
-		}
+		logger.Warn("invalid booking_open, using default",
+			logger.String("booking_open", bookingOpen), logger.Err(err))
+		h, mi, sec, _ = slotutil.ParseClockHM(preset.DefaultBookingOpen)
 	}
 	minH := cfg.SchedulerBookingWaitMinHourMy
 	if h < 0 || h > 23 || mi < 0 || mi > 59 || sec < 0 || sec > 59 || minH < 0 || minH > 23 {
@@ -108,8 +106,7 @@ func run(d *deps.Dependencies) error {
 
 	sem := make(chan struct{}, d.Config.MaxConcurrentPresets)
 	var wg sync.WaitGroup
-	var mu sync.Mutex
-	var succeeded, failed, cancelled int
+	var succeeded, failed, cancelled atomic.Int32
 
 	for _, p := range presets {
 		wg.Add(1)
@@ -128,22 +125,15 @@ func run(d *deps.Dependencies) error {
 				logger.String("booking_open", p.BookingOpen),
 				logger.String("retry_interval", p.RetryInterval),
 				logger.String("timeout", p.Timeout))
-			if err := processPreset(d, p); err != nil {
-				if errors.Is(err, errRunCancelled) {
-					mu.Lock()
-					cancelled++
-					mu.Unlock()
-					logger.Info("preset run cancelled", logger.String("user", p.UserName))
-				} else {
-					logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
-					mu.Lock()
-					failed++
-					mu.Unlock()
-				}
-			} else {
-				mu.Lock()
-				succeeded++
-				mu.Unlock()
+			switch err := processPreset(d, p); {
+			case errors.Is(err, errRunCancelled):
+				cancelled.Add(1)
+				logger.Info("preset run cancelled", logger.String("user", p.UserName))
+			case err != nil:
+				failed.Add(1)
+				logger.Error("preset failed", logger.String("user", p.UserName), logger.Err(err))
+			default:
+				succeeded.Add(1)
 			}
 		}(p)
 	}
@@ -151,9 +141,9 @@ func run(d *deps.Dependencies) error {
 	wg.Wait()
 	logger.Info("finished",
 		logger.Int("total", len(presets)),
-		logger.Int("succeeded", succeeded),
-		logger.Int("failed", failed),
-		logger.Int("cancelled", cancelled),
+		logger.Int("succeeded", int(succeeded.Load())),
+		logger.Int("failed", int(failed.Load())),
+		logger.Int("cancelled", int(cancelled.Load())),
 		logger.Duration("took", time.Since(start).Round(time.Millisecond)))
 	return nil
 }
@@ -220,6 +210,14 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		logger.Warn("invalid timeout, falling back to 10m", logger.String("user", p.UserName), logger.String("timeout", p.Timeout))
 		timeout = 10 * time.Minute
 	}
+	if timeout < preset.MinTimeoutDuration {
+		// Presets saved before the minimum existed (e.g. "3s") could never send a book.
+		logger.Warn("timeout below minimum, using minimum",
+			logger.String("user", p.UserName),
+			logger.Duration("timeout", timeout),
+			logger.Duration("min", preset.MinTimeoutDuration))
+		timeout = preset.MinTimeoutDuration
+	}
 	if d.Config.BookerDryRun && d.Config.BookerDryRunTimeout > 0 && timeout > d.Config.BookerDryRunTimeout {
 		timeout = d.Config.BookerDryRunTimeout
 	}
@@ -239,17 +237,12 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 
 	var loginMu sync.Mutex
 	baseCfg := runner.Config{
-		UserName:            p.UserName,
-		Token:               token,
-		TxnDate:             txnDate,
-		CutoffTeeTime:       cutoffTeeTime,
-		RetryInterval:       retryInterval,
-		Debug:               false,
-		Timeout:             timeout,
-		CheckToBookDelay:    booker.DefaultCheckToBookDelay,    // 3s: club 20017 if book is sooner
-		AccountWideCooldown: runner.DefaultAccountWideCooldown, // 5s: window closed only
-		RapidBackoffInitial: runner.DefaultRapidBackoffInitial, // 3s, doubles on each Rapid
-		RapidBackoffMax:     runner.DefaultRapidBackoffMax,     // 24s cap
+		UserName:      p.UserName,
+		Token:         token,
+		TxnDate:       txnDate,
+		CutoffTeeTime: cutoffTeeTime,
+		RetryInterval: retryInterval,
+		Waits:         runner.DefaultWaits,
 		RefreshToken: func(ctx context.Context) (string, error) {
 			if err := ctx.Err(); err != nil {
 				return "", err
@@ -264,13 +257,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		},
 	}
 
-	var runCtx context.Context
-	var cancelRun context.CancelFunc
-	if timeout > 0 {
-		runCtx, cancelRun = context.WithTimeout(context.Background(), timeout)
-	} else {
-		runCtx, cancelRun = context.WithCancel(context.Background())
-	}
+	runCtx, cancelRun := context.WithTimeout(context.Background(), timeout)
 	defer cancelRun()
 
 	stopPoll := make(chan struct{})
@@ -313,25 +300,12 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	resultsCh := make(chan runner.Result, len(courses))
 	for _, c := range courses {
 		go func() {
+			// A panic must not kill the other presets' runs or leave this one stuck "running".
 			defer func() {
-				rec := recover()
-				if rec == nil {
-					return
+				if rec := recover(); rec != nil {
+					logger.Error("course worker panicked", logger.String("user", p.UserName), logger.String("course", c))
+					resultsCh <- runner.Result{Status: runner.StatusFailed, CourseID: c, Message: fmt.Sprintf("[%s] internal error: %v", c, rec)}
 				}
-				// Send the synthetic failure result FIRST so the parent never
-				// blocks waiting for our slot, even if subsequent logging or
-				// formatting panics. The send is to a buffered channel sized
-				// to len(courses), so it never blocks.
-				panicMsg := fmt.Sprintf("[%s] panic: %v", c, rec)
-				resultsCh <- runner.Result{
-					Status:   runner.StatusFailed,
-					Message:  panicMsg,
-					CourseID: c,
-				}
-				logger.Error("course goroutine panicked",
-					logger.String("user", p.UserName),
-					logger.String("course", c),
-					logger.String("panic", panicMsg))
 			}()
 			cfg := baseCfg
 			cfg.CourseID = c
@@ -342,71 +316,71 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		}()
 	}
 
-	allResults := make([]runner.Result, 0, len(courses))
-	var successes []runner.Result
-	for i := 0; i < len(courses); i++ {
+	results := make([]runner.Result, 0, len(courses))
+	for range courses {
 		r := <-resultsCh
-		allResults = append(allResults, r)
+		results = append(results, r)
 		logAttempt(d.History, p, txnDate, r)
-		// Per-attempt log is intentionally compact; the full message + booking
-		// metadata is logged once in the run summary below.
 		logger.Info("course attempt finished",
 			logger.String("user", p.UserName),
 			logger.String("course", r.CourseID),
 			logger.String("status", string(r.Status)))
-		if r.Status == runner.StatusSuccess {
-			successes = append(successes, r)
-		}
 	}
 
-	if len(successes) > 0 {
-		msg := buildOutcomeMessage(successes, allResults)
-		logRunFinished(p, txnDate, successes, msg)
-		if msg != "" {
-			notifyUser(d.Notify, p, msg)
-		}
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusSuccess, msg)
-		return nil
-	}
-
-	// No bookings. runCtx.Canceled means the user cancelled (timeouts surface
-	// as DeadlineExceeded and fall through to the failure branch).
-	aggregatedMsg := aggregateFailureMessages(allResults)
-	if errors.Is(runCtx.Err(), context.Canceled) {
-		notifyUser(d.Notify, p, "CANCELLED: "+aggregatedMsg)
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, aggregatedMsg)
-		return errRunCancelled
-	}
-
-	notifyUser(d.Notify, p, "FAILED: "+aggregatedMsg)
-	updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, aggregatedMsg)
-	return errors.New(aggregatedMsg)
-}
-
-// logRunFinished emits the run summary. With one success we include the
-// structured booking fields the single-course path used to log; with multiple
-// successes we just report counts + aggregated message.
-func logRunFinished(p preset.Preset, txnDate string, successes []runner.Result, msg string) {
-	if len(successes) == 1 {
-		s := successes[0]
+	msg, booked := outcomeMessage(results)
+	switch {
+	case booked > 0:
 		logger.Info("run finished",
 			logger.String("user", p.UserName),
-			logger.String("status", string(s.Status)),
-			logger.Int("bookings", 1),
-			logger.String("message", s.Message),
-			logger.String("booking_id", s.BookingID),
-			logger.String("tee_time", s.TeeTime),
-			logger.String("tee_box", s.TeeBox),
-			logger.String("course_id", s.CourseID),
+			logger.Int("bookings", booked),
+			logger.String("message", msg),
 			logger.String("txn_date", txnDate))
-		return
+		notifyUser(d.Notify, p, msg)
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusSuccess, msg)
+		return nil
+	case errors.Is(runCtx.Err(), context.Canceled):
+		// Timeouts surface as DeadlineExceeded and fall through to failure.
+		notifyUser(d.Notify, p, "CANCELLED: "+msg)
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, msg)
+		return errRunCancelled
+	default:
+		notifyUser(d.Notify, p, "FAILED: "+msg+". See History for the full run log.")
+		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, msg)
+		return errors.New(msg)
 	}
-	logger.Info("run finished",
-		logger.String("user", p.UserName),
-		logger.String("status", string(runner.StatusSuccess)),
-		logger.Int("bookings", len(successes)),
-		logger.String("message", msg),
-		logger.String("txn_date", txnDate))
+}
+
+// outcomeMessage renders the user-facing summary of a run's per-course results,
+// ordered by CourseID so parallel workers always produce the same string.
+// Several successes are real bookings (one per course per day), so the user
+// gets a cancel hint; non-successes alongside a success go in "(also: ...)".
+func outcomeMessage(results []runner.Result) (msg string, booked int) {
+	sorted := append([]runner.Result(nil), results...)
+	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CourseID < sorted[j].CourseID })
+	var ok, other []string
+	for _, r := range sorted {
+		switch {
+		case r.Status == runner.StatusSuccess:
+			ok = append(ok, r.Message)
+		case r.Message != "":
+			other = append(other, r.Message)
+		}
+	}
+	switch len(ok) {
+	case 0:
+		if len(other) == 0 {
+			return "no slot booked", 0
+		}
+		return strings.Join(other, "; "), 0
+	case 1:
+		msg = ok[0]
+	default:
+		msg = fmt.Sprintf("%d bookings made — cancel any you don't want: %s", len(ok), strings.Join(ok, "; "))
+	}
+	if len(other) > 0 {
+		msg += " (also: " + strings.Join(other, "; ") + ")"
+	}
+	return msg, len(ok)
 }
 
 // resolveCoursesForRun returns the ordered list of distinct courses to try in
@@ -443,65 +417,6 @@ func resolveCoursesForRun(primary, txnDate string, altCourseDays sql.NullString,
 		return courses
 	}
 	return append(courses, alt)
-}
-
-// buildOutcomeMessage renders the user-facing summary when at least one
-// per-course attempt succeeded. With pure successes it's just
-// buildSuccessMessage; with a mixed outcome (some succeeded, others
-// failed/timed-out/cancelled) it appends the aggregated non-success detail in
-// a parenthetical so the user knows what the alt attempt did.
-func buildOutcomeMessage(successes, allResults []runner.Result) string {
-	msg := buildSuccessMessage(successes)
-	if len(allResults) == len(successes) {
-		return msg
-	}
-	nonSuccesses := make([]runner.Result, 0, len(allResults)-len(successes))
-	for _, r := range allResults {
-		if r.Status != runner.StatusSuccess {
-			nonSuccesses = append(nonSuccesses, r)
-		}
-	}
-	return msg + " (also: " + aggregateFailureMessages(nonSuccesses) + ")"
-}
-
-// buildSuccessMessage formats the one-or-more successful per-course bookings
-// into a single user-facing line. With one success it's the runner's existing
-// message verbatim; with multiple it concatenates them (sorted by CourseID for
-// stable output) and adds a cancel hint — the API allows one booking per
-// course per day, so 2 successes = 2 real bookings the user can choose between.
-func buildSuccessMessage(successes []runner.Result) string {
-	if len(successes) == 1 {
-		return successes[0].Message
-	}
-	sorted := append([]runner.Result(nil), successes...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CourseID < sorted[j].CourseID })
-	msgs := make([]string, 0, len(sorted))
-	for _, s := range sorted {
-		msgs = append(msgs, s.Message)
-	}
-	return fmt.Sprintf("%d bookings made — cancel any you don't want: %s",
-		len(sorted), strings.Join(msgs, "; "))
-}
-
-// aggregateFailureMessages joins per-course outcome messages with "; ". Order
-// is stable by CourseID so the same set of failures always produces the same
-// string (workers complete in non-deterministic order otherwise).
-func aggregateFailureMessages(results []runner.Result) string {
-	parts := make([]string, 0, len(results))
-	sorted := append([]runner.Result(nil), results...)
-	sort.Slice(sorted, func(i, j int) bool { return sorted[i].CourseID < sorted[j].CourseID })
-	for _, r := range sorted {
-		if r.Message != "" {
-			parts = append(parts, r.Message)
-		}
-	}
-	if len(parts) == 0 {
-		// Defensive: runner.Run always sets Message, but keep a sentinel
-		// so a future regression / panic-recovery edge can't surface "" to
-		// notify + history.
-		return "no slot booked"
-	}
-	return strings.Join(parts, "; ")
 }
 
 // resolveCourseForRun applies the temporary override (if any) and returns the
@@ -551,6 +466,9 @@ func logAttempt(svc history.Service, p preset.Preset, txnDate string, result run
 		BookingID: sql.NullString{String: result.BookingID, Valid: result.BookingID != ""},
 		Status:    string(result.Status),
 		Message:   result.Message,
+	}
+	if len(result.Steps) > 0 {
+		attempt.Steps, _ = json.Marshal(result.Steps) // []Step of strings and times cannot fail
 	}
 	if err := svc.LogAttempt(attempt); err != nil {
 		logger.Error("failed to log attempt", logger.String("user", p.UserName), logger.Err(err))

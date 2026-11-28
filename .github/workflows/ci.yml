@@ -58,7 +58,8 @@ jobs:
 
   e2e:
     name: E2E (Playwright, mocked API)
-    runs-on: ubuntu-latest
+    # ubuntu-latest moved to 26.04, which Playwright cannot install Chromium on yet.
+    runs-on: ubuntu-24.04
     steps:
       - uses: actions/checkout@v6
 

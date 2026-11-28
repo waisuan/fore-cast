@@ -194,158 +194,36 @@ func TestResolveCoursesForRun(t *testing.T) {
 	}
 }
 
-func TestBuildSuccessMessage(t *testing.T) {
+func TestOutcomeMessage(t *testing.T) {
 	t.Parallel()
-	tests := []struct {
-		name string
-		in   []runner.Result
-		want string
-	}{
-		{
-			name: "single success -> Message verbatim",
-			in: []runner.Result{
-				{
-					Status:    runner.StatusSuccess,
-					Message:   "Booked 07:30 1 (TeeBox 1) on 2026/05/24 [BRC]. BookingID: BK001",
-					CourseID:  "BRC",
-					BookingID: "BK001",
-				},
-			},
-			want: "Booked 07:30 1 (TeeBox 1) on 2026/05/24 [BRC]. BookingID: BK001",
-		},
-		{
-			name: "two successes -> joined with cancel hint",
-			in: []runner.Result{
-				{
-					Status:   runner.StatusSuccess,
-					Message:  "Booked 07:30 [BRC] BK001",
-					CourseID: "BRC",
-				},
-				{
-					Status:   runner.StatusSuccess,
-					Message:  "Booked 07:35 [PLC] BK002",
-					CourseID: "PLC",
-				},
-			},
-			want: "2 bookings made — cancel any you don't want: Booked 07:30 [BRC] BK001; Booked 07:35 [PLC] BK002",
-		},
-		{
-			// Workers complete in non-deterministic order; the user-visible
-			// message must be stable, ordered by CourseID.
-			name: "two successes -> sorted by CourseID regardless of input order",
-			in: []runner.Result{
-				{
-					Status:   runner.StatusSuccess,
-					Message:  "Booked 07:35 [PLC] BK002",
-					CourseID: "PLC",
-				},
-				{
-					Status:   runner.StatusSuccess,
-					Message:  "Booked 07:30 [BRC] BK001",
-					CourseID: "BRC",
-				},
-			},
-			want: "2 bookings made — cancel any you don't want: Booked 07:30 [BRC] BK001; Booked 07:35 [PLC] BK002",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := buildSuccessMessage(tc.in)
-			assert.Equal(t, tc.want, got)
-		})
-	}
-}
+	brc := runner.Result{Status: runner.StatusSuccess, Message: "Booked 07:30 [BRC] BK001", CourseID: "BRC"}
+	plc := runner.Result{Status: runner.StatusSuccess, Message: "Booked 07:35 [PLC] BK002", CourseID: "PLC"}
+	plcFail := runner.Result{Status: runner.StatusFailed, Message: "[PLC] no slot booked", CourseID: "PLC"}
+	plcCancelled := runner.Result{Status: runner.StatusCancelled, Message: "[PLC] Run cancelled", CourseID: "PLC"}
+	brcFail := runner.Result{Status: runner.StatusFailed, Message: "[BRC] no slot booked", CourseID: "BRC"}
+	plcReserved := runner.Result{Status: runner.StatusFailed, Message: "[PLC] all tee times already reserved", CourseID: "PLC"}
 
-func TestBuildOutcomeMessage(t *testing.T) {
-	t.Parallel()
-	brcSuccess := runner.Result{
-		Status:   runner.StatusSuccess,
-		Message:  "Booked 07:30 [BRC] BK001",
-		CourseID: "BRC",
-	}
-	plcFail := runner.Result{
-		Status:   runner.StatusFailed,
-		Message:  "[PLC] no slot booked",
-		CourseID: "PLC",
-	}
-	plcCancelled := runner.Result{
-		Status:   runner.StatusCancelled,
-		Message:  "[PLC] Run cancelled",
-		CourseID: "PLC",
-	}
 	tests := []struct {
 		name       string
-		successes  []runner.Result
-		allResults []runner.Result
+		in         []runner.Result
 		want       string
+		wantBooked int
 	}{
-		{
-			name:       "all succeeded -> no parenthetical",
-			successes:  []runner.Result{brcSuccess},
-			allResults: []runner.Result{brcSuccess},
-			want:       "Booked 07:30 [BRC] BK001",
-		},
-		{
-			name:       "mixed: success + fail -> non-success appended",
-			successes:  []runner.Result{brcSuccess},
-			allResults: []runner.Result{brcSuccess, plcFail},
-			want:       "Booked 07:30 [BRC] BK001 (also: [PLC] no slot booked)",
-		},
-		{
-			name:       "mixed: success + cancelled -> non-success appended",
-			successes:  []runner.Result{brcSuccess},
-			allResults: []runner.Result{brcSuccess, plcCancelled},
-			want:       "Booked 07:30 [BRC] BK001 (also: [PLC] Run cancelled)",
-		},
+		{"no results -> sentinel", nil, "no slot booked", 0},
+		{"single success verbatim", []runner.Result{brc}, "Booked 07:30 [BRC] BK001", 1},
+		{"two successes sorted with cancel hint", []runner.Result{plc, brc},
+			"2 bookings made — cancel any you don't want: Booked 07:30 [BRC] BK001; Booked 07:35 [PLC] BK002", 2},
+		{"success + fail", []runner.Result{plcFail, brc}, "Booked 07:30 [BRC] BK001 (also: [PLC] no slot booked)", 1},
+		{"success + cancelled", []runner.Result{brc, plcCancelled}, "Booked 07:30 [BRC] BK001 (also: [PLC] Run cancelled)", 1},
+		{"failures sorted and joined", []runner.Result{plcReserved, brcFail},
+			"[BRC] no slot booked; [PLC] all tee times already reserved", 0},
+		{"empty failure messages dropped", []runner.Result{{CourseID: "BRC"}, plcFail}, "[PLC] no slot booked", 0},
 	}
 	for _, tc := range tests {
 		t.Run(tc.name, func(t *testing.T) {
-			got := buildOutcomeMessage(tc.successes, tc.allResults)
+			got, booked := outcomeMessage(tc.in)
 			assert.Equal(t, tc.want, got)
-		})
-	}
-}
-
-func TestAggregateFailureMessages(t *testing.T) {
-	t.Parallel()
-	tests := []struct {
-		name string
-		in   []runner.Result
-		want string
-	}{
-		{
-			name: "no results -> sentinel fallback",
-			in:   nil,
-			want: "no slot booked",
-		},
-		{
-			name: "single result -> Message verbatim",
-			in: []runner.Result{
-				{CourseID: "BRC", Message: "[BRC] no slot booked"},
-			},
-			want: "[BRC] no slot booked",
-		},
-		{
-			name: "two results joined with semicolon, sorted by CourseID",
-			in: []runner.Result{
-				{CourseID: "PLC", Message: "[PLC] all tee times already reserved"},
-				{CourseID: "BRC", Message: "[BRC] no slot booked"},
-			},
-			want: "[BRC] no slot booked; [PLC] all tee times already reserved",
-		},
-		{
-			name: "empty messages dropped",
-			in: []runner.Result{
-				{CourseID: "BRC", Message: ""},
-				{CourseID: "PLC", Message: "[PLC] no slot booked"},
-			},
-			want: "[PLC] no slot booked",
-		},
-	}
-	for _, tc := range tests {
-		t.Run(tc.name, func(t *testing.T) {
-			got := aggregateFailureMessages(tc.in)
-			assert.Equal(t, tc.want, got)
+			assert.Equal(t, tc.wantBooked, booked)
 		})
 	}
 }

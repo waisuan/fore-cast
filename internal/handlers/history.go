@@ -20,15 +20,16 @@ type HistoryResponse struct {
 
 // HistoryItem is a single booking attempt in the response.
 type HistoryItem struct {
-	ID        int    `json:"id"`
-	CreatedAt string `json:"created_at"`
-	CourseID  string `json:"course_id"`
-	TxnDate   string `json:"txn_date"`
-	TeeTime   string `json:"tee_time,omitempty"`
-	TeeBox    string `json:"tee_box,omitempty"`
-	BookingID string `json:"booking_id,omitempty"`
-	Status    string `json:"status"`
-	Message   string `json:"message"`
+	ID        int             `json:"id"`
+	CreatedAt string          `json:"created_at"`
+	CourseID  string          `json:"course_id"`
+	TxnDate   string          `json:"txn_date"`
+	TeeTime   string          `json:"tee_time,omitempty"`
+	TeeBox    string          `json:"tee_box,omitempty"`
+	BookingID string          `json:"booking_id,omitempty"`
+	Status    string          `json:"status"`
+	Message   string          `json:"message"`
+	Steps     json.RawMessage `json:"steps"`
 }
 
 // GetHistory handles GET /api/v1/history.
@@ -59,6 +60,7 @@ func (h *HistoryHandler) GetHistory(w http.ResponseWriter, r *http.Request) {
 			BookingID: a.BookingID.String,
 			Status:    a.Status,
 			Message:   a.Message,
+			Steps:     a.Steps,
 		})
 	}
 	w.Header().Set("Content-Type", "application/json")

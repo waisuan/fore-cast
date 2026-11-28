@@ -2,7 +2,7 @@
 
 import { useState, useEffect, useCallback } from 'react';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { formatDate, formatDateTimeShortMY } from '@/utils/date';
+import { formatDate, formatDateTimeShortMY, formatTimeSecMY } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 
@@ -16,6 +16,34 @@ interface HistoryItem {
   booking_id: string;
   status: string;
   message: string;
+  steps?: RunStep[] | null;
+}
+
+interface RunStep {
+  at: string;
+  text: string;
+}
+
+/** Collapsible step-by-step log of what the scheduler did for this attempt. */
+function RunLog({ steps }: { steps?: RunStep[] | null }) {
+  if (!steps?.length) return null;
+  return (
+    <details className="mt-2 text-sm">
+      <summary className="cursor-pointer text-blue-700 hover:underline dark:text-blue-400">
+        What happened ({steps.length} steps)
+      </summary>
+      <ol className="mt-2 space-y-1 border-l-2 border-gray-200 pl-3 dark:border-gray-700">
+        {steps.map((s, i) => (
+          <li key={i} className="flex gap-2 text-gray-700 dark:text-gray-300">
+            <time dateTime={s.at} className="shrink-0 font-mono text-xs leading-5 text-gray-500 dark:text-gray-400">
+              {formatTimeSecMY(s.at)}
+            </time>
+            <span className="break-words">{s.text}</span>
+          </li>
+        ))}
+      </ol>
+    </details>
+  );
 }
 
 interface HistoryResponse {
@@ -92,9 +120,10 @@ export default function HistoryPage() {
                   {item.tee_time || '-'}
                   {item.tee_box ? ` / Box ${item.tee_box}` : ''}
                 </p>
-                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300" title={item.message}>
+                <p className="mt-1 text-sm text-gray-600 dark:text-gray-300">
                   {item.booking_id ? `ID: ${item.booking_id}` : item.message}
                 </p>
+                <RunLog steps={item.steps} />
               </div>
             ))}
           </div>
@@ -112,7 +141,7 @@ export default function HistoryPage() {
               </thead>
               <tbody className="divide-y divide-gray-100 dark:divide-gray-800">
                 {data.map((item) => (
-                  <tr key={item.id} className="text-gray-900 dark:text-gray-100">
+                  <tr key={item.id} className="align-top text-gray-900 dark:text-gray-100">
                     <td className="whitespace-nowrap px-3 py-2 text-gray-500 dark:text-gray-400">
                       {formatDateTimeShortMY(item.created_at)}
                     </td>
@@ -128,8 +157,9 @@ export default function HistoryPage() {
                         {item.status}
                       </span>
                     </td>
-                    <td className="max-w-xs truncate px-3 py-2 text-gray-500 dark:text-gray-400" title={item.message}>
+                    <td className="max-w-md px-3 py-2 text-gray-500 dark:text-gray-400">
                       {item.booking_id ? `ID: ${item.booking_id}` : item.message}
+                      <RunLog steps={item.steps} />
                     </td>
                   </tr>
                 ))}

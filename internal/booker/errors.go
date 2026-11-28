@@ -28,9 +28,9 @@ func UserFacingReason(reason, fallback string) string {
 		return "Not open yet — the club opens this date after 10:00 PM. Wait, then try once."
 	case containsFold(r, "not allowed during this time range"):
 		return "Booking isn't allowed at this hour. Wait until after 10:00 PM, then try once."
-	case containsFold(r, "rapid attempts", "temporarily locked"):
+	case IsRapidLock(r):
 		return "The club locked this account for too many rapid attempts. Wait a minute before trying again."
-	case containsFold(r, "already been reserved"):
+	case IsReserved(r):
 		return "That flight is already reserved. Pick another slot."
 	case containsFold(r, "was not reserve"):
 		return "The club failed to reserve that tee time. Try another slot."
@@ -43,6 +43,19 @@ func UserFacingReason(reason, fallback string) string {
 		return fb
 	}
 	return "Booking failed."
+}
+
+// IsReserved reports a club reply saying the flight is already taken.
+func IsReserved(reason string) bool { return containsFold(reason, "already been reserved") }
+
+// IsRapidLock reports a club reply saying the account is rate-limited.
+func IsRapidLock(reason string) bool {
+	return containsFold(reason, "rapid attempts", "temporarily locked")
+}
+
+// IsWindowClosed reports a club reply saying the booking window is not open yet.
+func IsWindowClosed(reason string) bool {
+	return containsFold(reason, "will be open after", "not allowed during this time range")
 }
 
 func containsFold(s string, phrases ...string) bool {

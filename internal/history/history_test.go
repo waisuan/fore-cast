@@ -3,6 +3,7 @@ package history_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"testing"
 	"time"
@@ -82,6 +83,7 @@ func (s *ServiceSuite) TestLogAttempt_And_GetAttempts() {
 		TxnDate:  "2026/03/05",
 		Status:   "failed",
 		Message:  "no slots",
+		Steps:    json.RawMessage(`[{"at":"2026-03-04T14:00:00Z","text":"7:37 AM tee 1: open."}]`),
 	})
 	s.Require().NoError(err)
 
@@ -103,6 +105,8 @@ func (s *ServiceSuite) TestLogAttempt_And_GetAttempts() {
 	s.Assert().Equal("BRC", attempts[0].CourseID)
 	s.Assert().Equal("failed", attempts[0].Status)
 	s.Assert().False(attempts[0].TeeTime.Valid)
+	s.Assert().JSONEq(`[{"at":"2026-03-04T14:00:00Z","text":"7:37 AM tee 1: open."}]`, string(attempts[0].Steps))
+	s.Assert().JSONEq(`[]`, string(attempts[1].Steps), "no steps stores an empty list")
 
 	s.Assert().Equal("PLC", attempts[1].CourseID)
 	s.Assert().Equal("success", attempts[1].Status)

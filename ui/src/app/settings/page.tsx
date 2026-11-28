@@ -46,6 +46,7 @@ interface PresetDefaults {
   retry_interval: string;
   min_retry_interval: string;
   timeout: string;
+  min_timeout: string;
   booking_open: string;
 }
 
@@ -208,6 +209,7 @@ export default function SettingsPage() {
   const [loading, setLoading] = useState(true);
   const [saving, setSaving] = useState(false);
   const [defaults, setDefaults] = useState<PresetDefaults | null>(null);
+  const minTimeout = defaults?.min_timeout ?? '30s';
   const [cutoff, setCutoff] = useState('');
   const [retryIntervalVal, setRetryIntervalVal] = useState('');
   const [timeoutVal, setTimeoutVal] = useState('');
@@ -292,8 +294,6 @@ export default function SettingsPage() {
     return () => clearInterval(id);
   }, [schedulerRunning, load]);
 
-  const MIN_RETRY_MS = 0;
-
   const overrideSummary = useMemo(
     () => summarizeOverride(overrideMode, overrideCourse, overrideUntilYmd),
     [overrideMode, overrideCourse, overrideUntilYmd],
@@ -323,19 +323,21 @@ export default function SettingsPage() {
     if (schedulerRunning) return;
     setSaving(true);
     try {
-      let retryInterval = retryIntervalVal.trim();
-      const retryMs = parseDurationMs(retryInterval);
-      if (retryMs !== null && retryMs < MIN_RETRY_MS) {
-        retryInterval = '0s';
-        addToast('Retry interval must be at least 0s, adjusted to 0s', 'info');
-      } else if (retryMs === null && retryInterval !== '') {
+      const retryInterval = retryIntervalVal.trim();
+      if (retryInterval !== '' && parseDurationMs(retryInterval) === null) {
         addToast('Invalid retry interval format (e.g. 1s, 100ms)', 'error');
         setSaving(false);
         return;
       }
       const timeout = timeoutVal.trim();
-      if (timeout !== '' && parseDurationMs(timeout) === null) {
+      const timeoutMs = parseDurationMs(timeout);
+      if (timeout !== '' && timeoutMs === null) {
         addToast('Invalid timeout format (e.g. 10m, 1h, 30s)', 'error');
+        setSaving(false);
+        return;
+      }
+      if (timeoutMs !== null && timeoutMs < (parseDurationMs(minTimeout) ?? 0)) {
+        addToast(`Timeout must be at least ${minTimeout}`, 'error');
         setSaving(false);
         return;
       }
@@ -589,7 +591,9 @@ export default function SettingsPage() {
             Timeout
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Maximum time to keep repeating full passes before giving up. Default: {defaults?.timeout}
+            Maximum time to keep repeating full passes before giving up. Each booking waits 3s after
+            the slot check, so short timeouts never book. Min: {minTimeout}. Default:{' '}
+            {defaults?.timeout}
           </p>
           <input
             id="timeout"

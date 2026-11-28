@@ -92,8 +92,9 @@ describe('AuthProvider', () => {
         username: 'u1',
         password: 'p1',
       });
+      // The user is set after the post resolves, so wait for it too (flaked in CI).
+      expect(screen.getByTestId('user')).toHaveTextContent('bob');
     });
-    expect(screen.getByTestId('user')).toHaveTextContent('bob');
     expect(screen.getByTestId('admin')).toHaveTextContent('true');
   });
 

@@ -26,6 +26,13 @@ const (
 // MinRetryIntervalDuration is the minimum allowed retry interval (0s).
 const MinRetryIntervalDuration time.Duration = 0
 
+// MinTimeoutDuration is the shortest allowed run timeout. A run needs the 3s
+// check-to-book wait plus a few rapid-lock backoffs (3s, 6s, 12s) to book at all.
+const MinTimeoutDuration = 30 * time.Second
+
+// MinTimeout is MinTimeoutDuration as a preset string ("30s").
+var MinTimeout = MinTimeoutDuration.String()
+
 // Service defines operations on booking presets.
 //
 //go:generate mockgen -destination=./mock_service.go -package=preset -source=preset.go
