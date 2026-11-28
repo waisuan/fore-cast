@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import Link from 'next/link';
 import { api, ApiError, API_ENDPOINTS } from '@/utils/api';
-import { toApiDate, formatTime, todayIsoMalaysia } from '@/utils/date';
+import { toApiDate, formatTime, formatWeekdayDateMY, todayIsoMalaysia } from '@/utils/date';
 import { useToast } from '@/contexts/ToastContext';
 import Spinner from '@/components/Spinner';
 import SchedulerRunningBanner from '@/components/SchedulerRunningBanner';
@@ -33,6 +33,9 @@ export default function SlotsPage() {
   const [date, setDate] = useState('');
   const [course, setCourse] = useState<string>('');
   const [data, setData] = useState<SlotsResponse | null>(null);
+  // The date the shown list belongs to: Book must use it even if the picker changes afterwards.
+  const [loadedDate, setLoadedDate] = useState('');
+  const [booked, setBooked] = useState<Record<string, string>>({});
   const [loading, setLoading] = useState(false);
   const [bookingSlotKey, setBookingSlotKey] = useState<string | null>(null);
   const [cancelLoading, setCancelLoading] = useState(false);
@@ -64,6 +67,8 @@ export default function SlotsPage() {
         `${API_ENDPOINTS.slots}?${params.toString()}`,
       );
       setData(res);
+      setLoadedDate(date);
+      setBooked({});
       if (res.slots.length === 0) {
         addToast('No slots available for this date', 'info');
       }
@@ -107,13 +112,15 @@ export default function SlotsPage() {
       try {
         const res = await api.post<{ bookingID?: string }>(API_ENDPOINTS.bookingBook, {
           courseID: slot.CourseID,
-          txnDate: toApiDate(date),
+          txnDate: toApiDate(loadedDate),
           session: slot.Session,
           teeBox: slot.TeeBox,
           teeTime: slot.TeeTime,
         });
         if (res?.bookingID) {
-          addToast(`Booked! ID: ${res.bookingID}`, 'success');
+          const bookingID = res.bookingID;
+          setBooked((prev) => ({ ...prev, [key]: bookingID }));
+          addToast(`Booked! ID: ${bookingID}`, 'success');
         } else {
           addToast('Booking failed — no confirmation received', 'error');
         }
@@ -123,7 +130,7 @@ export default function SlotsPage() {
         setBookingSlotKey(null);
       }
     },
-    [date, addToast, schedulerRunning]
+    [loadedDate, addToast, schedulerRunning]
   );
 
   return (
@@ -187,33 +194,48 @@ export default function SlotsPage() {
       )}
       {!schedulerRunning && data && (
         <div>
-          <p className="mb-2 text-sm text-gray-600 dark:text-gray-400">
-            Course: {data.course} &middot; {data.slots.length} slot(s)
-          </p>
+          <h2 className="mb-2 text-base font-semibold text-gray-900 dark:text-white">
+            {formatWeekdayDateMY(loadedDate)} &middot; {data.course} &middot; {data.slots.length}{' '}
+            {data.slots.length === 1 ? 'tee time' : 'tee times'}
+          </h2>
           <ul className="space-y-2">
-            {data.slots.map((slot) => (
-              <li
-                key={`${slot.TeeTime}-${slot.TeeBox}`}
-                className="flex flex-wrap items-center justify-between gap-2 rounded border border-gray-200 bg-white p-3 dark:border-gray-700 dark:bg-gray-800"
-              >
-                <span className="font-medium text-gray-900 dark:text-white">
-                  {formatTime(slot.TeeTime)} {slot.Session} &middot; TeeBox {slot.TeeBox}
-                </span>
-                <button
-                  type="button"
-                  onClick={() => bookSlot(slot)}
-                  disabled={bookingSlotKey !== null}
-                  aria-busy={bookingSlotKey === `${slot.TeeTime}-${slot.TeeBox}`}
-                  className="rounded bg-blue-600 px-3 py-1.5 text-sm text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+            {data.slots.map((slot) => {
+              const key = `${slot.TeeTime}-${slot.TeeBox}`;
+              const bookingID = booked[key];
+              return (
+                <li
+                  key={key}
+                  className={`flex flex-wrap items-center justify-between gap-2 rounded border p-3 ${
+                    bookingID
+                      ? 'border-green-300 bg-green-50 dark:border-green-800 dark:bg-green-900/30'
+                      : 'border-gray-200 bg-white dark:border-gray-700 dark:bg-gray-800'
+                  }`}
                 >
-                  {bookingSlotKey === `${slot.TeeTime}-${slot.TeeBox}` ? (
-                    <Spinner className="h-4 w-4 text-white" />
+                  <span className="font-medium text-gray-900 dark:text-white">
+                    {formatTime(slot.TeeTime)} &middot; {slot.Session} &middot; Tee {slot.TeeBox}
+                  </span>
+                  {bookingID ? (
+                    <span className="text-sm text-green-900 dark:text-green-200">
+                      Booked &middot; ID {bookingID} &middot;{' '}
+                      <Link href="/booking" className="font-medium underline underline-offset-2">
+                        My bookings
+                      </Link>
+                    </span>
                   ) : (
-                    'Book'
+                    <button
+                      type="button"
+                      onClick={() => bookSlot(slot)}
+                      disabled={bookingSlotKey !== null}
+                      aria-busy={bookingSlotKey === key}
+                      aria-label={`Book ${formatTime(slot.TeeTime)} tee ${slot.TeeBox}`}
+                      className="min-h-11 min-w-[5.5rem] rounded bg-blue-600 px-4 text-sm font-medium text-white hover:bg-blue-700 disabled:cursor-not-allowed disabled:opacity-70"
+                    >
+                      {bookingSlotKey === key ? <Spinner className="h-4 w-4 text-white" /> : 'Book'}
+                    </button>
                   )}
-                </button>
-              </li>
-            ))}
+                </li>
+              );
+            })}
           </ul>
         </div>
       )}

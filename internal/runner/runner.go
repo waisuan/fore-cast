@@ -173,7 +173,15 @@ func run(ctx context.Context, cfg Config, client booker.ClientInterface, log *st
 
 	cutoff := slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime)
 	slots = slotutil.SlotsBeforeCutoff(slots, cfg.CutoffTeeTime)
-	log.add("%s on %s: %d tee time(s) before your %s cutoff.", cfg.CourseID, cfg.TxnDate, len(slots), cutoff)
+	day := cfg.TxnDate
+	if t, err := time.Parse("2006/01/02", cfg.TxnDate); err == nil {
+		day = t.Format("Mon 2 Jan")
+	}
+	noun := "tee times"
+	if len(slots) == 1 {
+		noun = "tee time"
+	}
+	log.add("%s on %s: %d %s before your %s cutoff.", cfg.CourseID, day, len(slots), noun, cutoff)
 	if len(slots) == 0 {
 		msg := fmt.Sprintf("no slots available before %s cutoff", cutoff)
 		r := resultWithCourse(cfg, StatusNoSlots, msg)

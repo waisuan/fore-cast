@@ -7,6 +7,7 @@ import {
   courseForYmd,
   endOfDayMalaysiaIso,
   formatShortDateMY,
+  formatTime,
   formatWeekdayDateMY,
   isoToYmdMalaysia,
   nextSchedulerRunMY,
@@ -75,6 +76,11 @@ type OverridePayload = { course: string; until: string | null };
 
 const COURSE_OPTIONS = ['BRC', 'PLC'] as const;
 const DEFAULT_BOOKING_OPEN = '21:59:00';
+
+/** "21:59:00" or "8:15" as the app-wide 12-hour label, e.g. "9:59 PM". */
+function clock12(t: string): string {
+  return formatTime(`T${clockWithSeconds(t)}`);
+}
 
 /** Normalize HH:MM or HH:MM:SS for <input type="time" step="1">. */
 function clockWithSeconds(t: string): string {
@@ -301,6 +307,8 @@ export default function SettingsPage() {
   // Recompute every render so the date picker's `min` stays correct if a session
   // crosses Malaysia midnight. Cost is negligible — both helpers are O(1).
   const minOverrideDate = addCalendarDaysYmd(todayIsoMalaysia(), 1);
+  // "HH:MM:SS" strings compare correctly as text.
+  const bookingOpenTooEarly = !!bookingOpen && clockWithSeconds(bookingOpen) < DEFAULT_BOOKING_OPEN;
 
   async function handleCopyTopic() {
     if (!ntfyTopic) return;
@@ -401,11 +409,31 @@ export default function SettingsPage() {
           aria-busy={saving}
         >
           <legend className="sr-only">Auto-booker configuration</legend>
+        <div className="flex items-start gap-3 rounded-lg border border-gray-300 bg-white p-4 dark:border-gray-600 dark:bg-gray-800">
+          <input
+            id="enabled"
+            type="checkbox"
+            checked={enabled}
+            onChange={(e) => setEnabled(e.target.checked)}
+            aria-describedby="enabledHelp"
+            className="mt-0.5 h-5 w-5 shrink-0 rounded border-gray-300"
+          />
+          <div>
+            <label htmlFor="enabled" className="text-base font-semibold text-gray-900 dark:text-white">
+              Enable auto-booking
+            </label>
+            <p id="enabledHelp" className="text-sm text-gray-600 dark:text-gray-400">
+              {enabled
+                ? `On: books a tee time 7 days ahead every night at ${SCHEDULER_FIRE_LABEL_MY}. Save to apply changes.`
+                : 'Off: no tee times are booked automatically.'}
+            </p>
+          </div>
+        </div>
         <div className="rounded-lg border-2 border-amber-300 bg-amber-50 p-4 dark:border-amber-700/70 dark:bg-amber-900/20">
           <p className="mb-1 text-sm font-semibold text-amber-900 dark:text-amber-100">
             Temporary course override
           </p>
-          <p className="mb-3 text-xs text-amber-800/80 dark:text-amber-200/70">
+          <p className="mb-3 text-xs text-amber-800 dark:text-amber-200/80">
             Book a different course than the default schedule above, then revert automatically.
           </p>
           <div className="flex flex-col gap-3">
@@ -488,7 +516,7 @@ export default function SettingsPage() {
                 )}
               </fieldset>
             )}
-            <p className="text-xs text-amber-800/80 dark:text-amber-200/70">{overrideSummary}</p>
+            <p className="text-xs text-amber-800 dark:text-amber-200/80">{overrideSummary}</p>
           </div>
         </div>
         <fieldset
@@ -505,10 +533,10 @@ export default function SettingsPage() {
             On selected weekdays, also try to book on the <em>other</em> course in parallel &mdash;
             i.e. PLC on a BRC day, and vice versa. Both attempts run to completion, so it&rsquo;s
             possible to book on both courses for the same day &mdash; if that happens, cancel
-            whichever one you don&rsquo;t want from history. <strong>Skipped while a course
+            whichever one you don&rsquo;t want in My bookings. <strong>Skipped while a course
             override is active</strong> (the override wins).
           </p>
-          <div className="flex flex-wrap gap-1.5" role="group" aria-label="Alt-course weekdays">
+          <div className="flex flex-wrap gap-1" role="group" aria-label="Alt-course weekdays">
             {WEEKDAY_CODES_BY_DAY.map((code) => {
               const meta = WEEKDAY_PILL_META[code];
               const active = altCourseDays.includes(code);
@@ -525,7 +553,7 @@ export default function SettingsPage() {
                     )
                   }
                   className={
-                    'inline-flex h-8 w-9 items-center justify-center rounded-full border text-xs font-medium transition-colors ' +
+                    'inline-flex h-11 w-10 items-center justify-center rounded-full border text-xs font-medium transition-colors ' +
                     (active
                       ? 'border-blue-600 bg-blue-600 text-white hover:bg-blue-500'
                       : 'border-gray-300 bg-white text-gray-700 hover:bg-gray-100 dark:border-gray-600 dark:bg-gray-700 dark:text-gray-200 dark:hover:bg-gray-600')
@@ -538,29 +566,11 @@ export default function SettingsPage() {
           </div>
         </fieldset>
         <div>
-          <label htmlFor="bookingOpen" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Start calling the club at
-          </label>
-          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Malaysia time, including seconds. Inventory typically opens after 10:00 PM — starting
-            earlier can lock the account. Default:{' '}
-            {clockWithSeconds(defaults?.booking_open ?? DEFAULT_BOOKING_OPEN)}
-          </p>
-          <input
-            id="bookingOpen"
-            type="time"
-            step="1"
-            value={bookingOpen}
-            onChange={(e) => setBookingOpen(e.target.value)}
-            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
-          />
-        </div>
-        <div>
           <label htmlFor="cutoff" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
             Cutoff time
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Only book slots before this time. Default: {defaults?.cutoff}
+            Only book tee times that start before this time. Default: {defaults?.cutoff ? clock12(defaults.cutoff) : ''}
           </p>
           <input
             id="cutoff"
@@ -570,12 +580,48 @@ export default function SettingsPage() {
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
         </div>
+        <details className="rounded-lg border border-gray-200 p-4 dark:border-gray-700">
+          <summary className="cursor-pointer text-sm font-semibold text-gray-900 dark:text-white">
+            Advanced timing
+          </summary>
+          <p className="mt-1 text-xs text-gray-500 dark:text-gray-400">
+            The defaults work for most members. Change these only if a run&rsquo;s History log shows
+            a timing problem.
+          </p>
+          <div className="mt-4 flex flex-col gap-4">
         <div>
-          <label htmlFor="retryInterval" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
-            Delay between passes
+          <label htmlFor="bookingOpen" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+            Start calling the club at
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            After each full walk through cutoff slots, wait this long before the next pass (e.g. 1s, 100ms). Min: {defaults?.min_retry_interval ?? '0s'}. Default: {defaults?.retry_interval}
+            Malaysia time. The club opens bookings at 10:00 PM. Until then the auto-booker checks
+            every 5s and waits, so the default ({clock12(defaults?.booking_open ?? DEFAULT_BOOKING_OPEN)})
+            is ready the moment bookings open. Starting much earlier means more checks and a
+            higher chance the club locks the account for rapid attempts.
+          </p>
+          <input
+            id="bookingOpen"
+            type="time"
+            step="1"
+            value={bookingOpen}
+            onChange={(e) => setBookingOpen(e.target.value)}
+            aria-describedby={bookingOpenTooEarly ? 'bookingOpenWarn' : undefined}
+            className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
+          />
+          {bookingOpenTooEarly && (
+            <p id="bookingOpenWarn" className="mt-1 text-xs font-medium text-amber-800 dark:text-amber-200">
+              Earlier than {clock12(DEFAULT_BOOKING_OPEN)} adds checks before the club opens and risks a
+              rapid-attempt lock.
+            </p>
+          )}
+        </div>
+        <div>
+          <label htmlFor="retryInterval" className="mb-1 block text-sm text-gray-700 dark:text-gray-300">
+            Wait between rounds
+          </label>
+          <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
+            After checking every tee time once without booking, wait this long before trying again
+            (e.g. 1s, 500ms). Default: {defaults?.retry_interval}
           </p>
           <input
             id="retryInterval"
@@ -591,7 +637,7 @@ export default function SettingsPage() {
             Timeout
           </label>
           <p className="mb-1 text-xs text-gray-500 dark:text-gray-400">
-            Maximum time to keep repeating full passes before giving up. Each booking waits 3s after
+            How long to keep trying before giving up (e.g. 10m). Each booking waits 3s after
             the slot check, so short timeouts never book. Min: {minTimeout}. Default:{' '}
             {defaults?.timeout}
           </p>
@@ -604,6 +650,8 @@ export default function SettingsPage() {
             className="w-full max-w-xs rounded border border-gray-300 px-3 py-2 dark:border-gray-600 dark:bg-gray-700 dark:text-white"
           />
         </div>
+          </div>
+        </details>
         <div>
           <div className="flex items-center gap-2">
             <input
@@ -661,18 +709,6 @@ export default function SettingsPage() {
               A unique topic will be generated when you save.
             </p>
           )}
-        </div>
-        <div className="flex items-center gap-2">
-          <input
-            id="enabled"
-            type="checkbox"
-            checked={enabled}
-            onChange={(e) => setEnabled(e.target.checked)}
-            className="h-4 w-4 rounded border-gray-300"
-          />
-          <label htmlFor="enabled" className="text-sm text-gray-700 dark:text-gray-300">
-            Enable auto-booking
-          </label>
         </div>
         </fieldset>
         <button
