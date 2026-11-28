@@ -13,10 +13,10 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version: stable # golangci-lint@latest needs the newest Go to build
 
       - name: Run golangci-lint
-        run: go run github.com/golangci/golangci-lint/cmd/golangci-lint@latest run ./...
+        run: go run github.com/golangci/golangci-lint/v2/cmd/golangci-lint@latest run ./...
 
   test:
     name: Test
@@ -26,7 +26,7 @@ jobs:
 
       - uses: actions/setup-go@v6
         with:
-          go-version: "1.24"
+          go-version-file: go.mod
           cache-dependency-path: go.sum
 
       - name: Test
