@@ -70,7 +70,7 @@ describe('BookingPage', () => {
     renderBooking();
 
     await waitFor(() => {
-      expect(screen.getByText(/Booking ID: BK-1/)).toBeInTheDocument();
+      expect(screen.getByText(/Booking ID BK-1/)).toBeInTheDocument();
     });
   });
 

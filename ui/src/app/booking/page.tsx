@@ -156,17 +156,14 @@ export default function BookingPage() {
                   key={b.BookingID}
                   className="rounded border border-gray-200 bg-white p-4 dark:border-gray-700 dark:bg-gray-800"
                 >
-                  <p className="font-medium text-gray-900 dark:text-white">
-                    Booking ID: {b.BookingID}
+                  <p className="font-semibold text-gray-900 dark:text-white">
+                    {formatDate(b.TxnDate)} &middot; {formatTime(b.TeeTime)}
+                  </p>
+                  <p className="text-sm text-gray-700 dark:text-gray-300">
+                    {b.CourseName} ({b.CourseID}) &middot; {b.Session} &middot; Tee {b.TeeBox}
                   </p>
                   <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {formatDate(b.TxnDate)} &middot; {b.CourseName} ({b.CourseID})
-                  </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    {formatTime(b.TeeTime)} &middot; Session: {b.Session} &middot; TeeBox: {b.TeeBox}
-                  </p>
-                  <p className="text-sm text-gray-600 dark:text-gray-400">
-                    Pax: {b.Pax} &middot; Holes: {b.Hole} &middot; {b.Name}
+                    {b.Pax} players &middot; {b.Hole} holes &middot; {b.Name} &middot; Booking ID {b.BookingID}
                   </p>
                   <div className="mt-3">
                     <button

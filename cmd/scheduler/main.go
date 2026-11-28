@@ -165,6 +165,21 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	}
 	defer func() { _ = d.Preset.ClearCancelRequested(p.UserName) }()
 
+	// Live run log for Home. finish closes it before the final status so a
+	// client that sees the run end also sees its last steps.
+	if err := d.Preset.ResetLiveSteps(p.UserName); err != nil {
+		logger.Warn("failed to reset live steps", logger.String("user", p.UserName), logger.Err(err))
+	}
+	live := startLiveLog(d.Preset, p.UserName, time.Second)
+	finish := func(status preset.RunStatus, msg string) {
+		live.close()
+		updateRunDone(d.Preset, p.UserName, status, msg)
+	}
+	fail := func(msg string) {
+		live.add(runner.Step{At: time.Now(), Text: "Stopped: " + msg})
+		finish(preset.RunStatusFailed, msg)
+	}
+
 	txnDate := txnDateFromConfig(d.Config)
 	primaryCourse, clearOverrideAfterRun, overrideActive := resolveCourseForRun(d.Preset, p, txnDate, time.Now())
 	if clearOverrideAfterRun {
@@ -178,16 +193,16 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 
 	cred, err := d.Credentials.Get(p.UserName)
 	if err != nil {
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "credentials: "+err.Error())
+		fail("credentials: " + err.Error())
 		return fmt.Errorf("credentials: %w", err)
 	}
 	if cred == nil {
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "credentials not found")
+		fail("credentials not found")
 		return fmt.Errorf("credentials not found for %s", p.UserName)
 	}
 	password, err := crypto.Decrypt(cred.PasswordEnc, d.Config.EncryptionKey)
 	if err != nil {
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "decrypt password: "+err.Error())
+		fail("decrypt password: " + err.Error())
 		return fmt.Errorf("decrypt password: %w", err)
 	}
 
@@ -195,13 +210,17 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 	if err != nil {
 		logAttempt(d.History, p, txnDate, runner.Result{Status: runner.StatusFailed, Message: "login: " + err.Error()})
 		notifyUser(d.Notify, p, "FAILED: login: "+err.Error())
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "login: "+err.Error())
+		fail("login: " + err.Error())
 		return fmt.Errorf("login: %w", err)
+	}
+	live.add(runner.Step{At: time.Now(), Text: "Logged in to the club."})
+	if len(courses) > 1 {
+		live.add(runner.Step{At: time.Now(), Text: "Trying " + strings.Join(courses, " and ") + " at the same time."})
 	}
 
 	cutoffTeeTime, err := slotutil.ParseCutoff(p.Cutoff)
 	if err != nil {
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, "parse cutoff: "+err.Error())
+		fail("parse cutoff: " + err.Error())
 		return fmt.Errorf("parse cutoff: %w", err)
 	}
 
@@ -243,6 +262,7 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 		CutoffTeeTime: cutoffTeeTime,
 		RetryInterval: retryInterval,
 		Waits:         runner.DefaultWaits,
+		OnStep:        live.add,
 		RefreshToken: func(ctx context.Context) (string, error) {
 			if err := ctx.Err(); err != nil {
 				return "", err
@@ -336,16 +356,16 @@ func processPreset(d *deps.Dependencies, p preset.Preset) error {
 			logger.String("message", msg),
 			logger.String("txn_date", txnDate))
 		notifyUser(d.Notify, p, msg)
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusSuccess, msg)
+		finish(preset.RunStatusSuccess, msg)
 		return nil
 	case errors.Is(runCtx.Err(), context.Canceled):
 		// Timeouts surface as DeadlineExceeded and fall through to failure.
 		notifyUser(d.Notify, p, "CANCELLED: "+msg)
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusCancelled, msg)
+		finish(preset.RunStatusCancelled, msg)
 		return errRunCancelled
 	default:
 		notifyUser(d.Notify, p, "FAILED: "+msg+". See History for the full run log.")
-		updateRunDone(d.Preset, p.UserName, preset.RunStatusFailed, msg)
+		finish(preset.RunStatusFailed, msg)
 		return errors.New(msg)
 	}
 }
@@ -473,6 +493,77 @@ func logAttempt(svc history.Service, p preset.Preset, txnDate string, result run
 	if err := svc.LogAttempt(attempt); err != nil {
 		logger.Error("failed to log attempt", logger.String("user", p.UserName), logger.Err(err))
 	}
+}
+
+// liveLogMax bounds live_steps per run; past it only the last few steps are kept.
+const liveLogMax = 300
+
+// liveLog streams run-log steps to booking_presets.live_steps in batches so
+// Home can show a run as it happens. add never blocks the booking path: when
+// the buffer is full the step is dropped from the live view (History keeps it).
+type liveLog struct {
+	ch   chan runner.Step
+	done chan struct{}
+}
+
+func startLiveLog(svc preset.Service, userName string, every time.Duration) *liveLog {
+	l := &liveLog{ch: make(chan runner.Step, 256), done: make(chan struct{})}
+	go func() {
+		defer close(l.done)
+		var batch, tail []runner.Step
+		written, dropped := 0, 0
+		flush := func(steps []runner.Step) {
+			if len(steps) == 0 {
+				return
+			}
+			b, _ := json.Marshal(steps) // Steps of strings and times cannot fail
+			if err := svc.AppendLiveSteps(userName, b); err != nil {
+				logger.Warn("failed to append live steps", logger.String("user", userName), logger.Err(err))
+			}
+		}
+		t := time.NewTicker(every)
+		defer t.Stop()
+		for {
+			select {
+			case s, ok := <-l.ch:
+				if !ok {
+					if dropped > len(tail) {
+						batch = append(batch, runner.Step{At: time.Now(), Text: fmt.Sprintf("… %d steps not shown here; see History", dropped-len(tail))})
+					}
+					flush(append(batch, tail...))
+					return
+				}
+				if written < liveLogMax {
+					batch = append(batch, s)
+					written++
+					continue
+				}
+				// Over the cap: keep the latest few so the outcome still shows.
+				dropped++
+				tail = append(tail, s)
+				if len(tail) > 5 {
+					tail = tail[1:]
+				}
+			case <-t.C:
+				flush(batch)
+				batch = nil
+			}
+		}
+	}()
+	return l
+}
+
+func (l *liveLog) add(s runner.Step) {
+	select {
+	case l.ch <- s:
+	default:
+	}
+}
+
+// close flushes the remaining steps and waits for the writer to finish.
+func (l *liveLog) close() {
+	close(l.ch)
+	<-l.done
 }
 
 func updateRunDone(svc preset.Service, userName string, status preset.RunStatus, message string) {

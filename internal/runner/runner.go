@@ -60,6 +60,9 @@ type Config struct {
 	// RefreshToken is called after CODE103 so the run can continue with a new
 	// session. Nil means fail on the first invalid token.
 	RefreshToken func(ctx context.Context) (string, error)
+	// OnStep, when set, receives each run-log step as it happens (live view).
+	// It runs on the booking path, so it must not block.
+	OnStep func(Step)
 }
 
 // Result describes the outcome of a booking run.
@@ -76,8 +79,9 @@ type Result struct {
 
 // Step is one line of the user-facing run log.
 type Step struct {
-	At   time.Time `json:"at"`
-	Text string    `json:"text"`
+	At     time.Time `json:"at"`
+	Text   string    `json:"text"`
+	Course string    `json:"course,omitempty"`
 }
 
 // maxSteps bounds the stored log: a 10m run at a 1s retry would otherwise log
@@ -86,15 +90,25 @@ const maxSteps = 150
 
 // stepLog collects Steps and remembers the club's last reply for the summary.
 type stepLog struct {
+	course    string
+	onStep    func(Step)
 	steps     []Step
 	dropped   int
 	lastReply string
 }
 
+func (l *stepLog) emit(s Step) {
+	if l.onStep != nil {
+		l.onStep(s)
+	}
+}
+
 // add keeps the first step (slot count) and the latest ones: the end of a run
 // is what explains its outcome.
 func (l *stepLog) add(format string, args ...any) {
-	l.steps = append(l.steps, Step{At: time.Now(), Text: fmt.Sprintf(format, args...)})
+	s := Step{At: time.Now(), Text: fmt.Sprintf(format, args...), Course: l.course}
+	l.emit(s)
+	l.steps = append(l.steps, s)
 	if len(l.steps) > maxSteps {
 		l.steps = slices.Delete(l.steps, 1, 2)
 		l.dropped++
@@ -104,9 +118,11 @@ func (l *stepLog) add(format string, args ...any) {
 // finish appends the closing line even when the log is full.
 func (l *stepLog) finish(text string) []Step {
 	if l.dropped > 0 {
-		l.steps = slices.Insert(l.steps, 1, Step{At: l.steps[1].At, Text: fmt.Sprintf("… %d earlier steps not shown", l.dropped)})
+		l.steps = slices.Insert(l.steps, 1, Step{At: l.steps[1].At, Text: fmt.Sprintf("… %d earlier steps not shown", l.dropped), Course: l.course})
 	}
-	return append(l.steps, Step{At: time.Now(), Text: text})
+	last := Step{At: time.Now(), Text: text, Course: l.course}
+	l.emit(last)
+	return append(l.steps, last)
 }
 
 // reply is what a club Reason means for the run.
@@ -142,7 +158,7 @@ func resultWithCourse(cfg Config, status Status, msg string) Result {
 // check each slot, wait Waits.CheckToBook, then book. A window-closed or rapid
 // reply ends the pass early. CODE103 calls RefreshToken and retries.
 func Run(ctx context.Context, cfg Config, client booker.ClientInterface) (Result, error) {
-	log := &stepLog{}
+	log := &stepLog{course: cfg.CourseID, onStep: cfg.OnStep}
 	r, err := run(ctx, cfg, client, log)
 	r.Steps = log.finish(stepSummary(r))
 	return r, err
@@ -173,7 +189,15 @@ func run(ctx context.Context, cfg Config, client booker.ClientInterface, log *st
 
 	cutoff := slotutil.FormatCutoffDisplay(cfg.CutoffTeeTime)
 	slots = slotutil.SlotsBeforeCutoff(slots, cfg.CutoffTeeTime)
-	log.add("%s on %s: %d tee time(s) before your %s cutoff.", cfg.CourseID, cfg.TxnDate, len(slots), cutoff)
+	day := cfg.TxnDate
+	if t, err := time.Parse("2006/01/02", cfg.TxnDate); err == nil {
+		day = t.Format("Mon 2 Jan")
+	}
+	noun := "tee times"
+	if len(slots) == 1 {
+		noun = "tee time"
+	}
+	log.add("%s on %s: %d %s before your %s cutoff.", cfg.CourseID, day, len(slots), noun, cutoff)
 	if len(slots) == 0 {
 		msg := fmt.Sprintf("no slots available before %s cutoff", cutoff)
 		r := resultWithCourse(cfg, StatusNoSlots, msg)

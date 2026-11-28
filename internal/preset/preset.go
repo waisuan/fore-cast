@@ -2,6 +2,7 @@ package preset
 
 import (
 	"database/sql"
+	"encoding/json"
 	"errors"
 	"time"
 )
@@ -41,6 +42,8 @@ type Service interface {
 	GetPreset(userName string) (*Preset, error)
 	GetEnabledPresets() ([]Preset, error)
 	UpdatePresetRunStatus(userName string, status RunStatus, message string) error
+	ResetLiveSteps(userName string) error
+	AppendLiveSteps(userName string, steps json.RawMessage) error
 	RequestCancelRun(userName string) error
 	ClearCancelRequested(userName string) error
 	ClearCourseOverride(userName string) error
@@ -71,12 +74,14 @@ type Preset struct {
 	RetryInterval string
 	Timeout       string
 	// BookingOpen is Malaysia local HH:MM or HH:MM:SS when this preset may start club API calls.
-	BookingOpen     string
-	NtfyTopic       sql.NullString
-	Enabled         bool
-	LastRunStatus   string
-	LastRunMessage  string
-	LastRunAt       sql.NullTime
+	BookingOpen    string
+	NtfyTopic      sql.NullString
+	Enabled        bool
+	LastRunStatus  string
+	LastRunMessage string
+	LastRunAt      sql.NullTime
+	// LiveSteps is the run log of the current or last run (JSON array), read by GetPreset only.
+	LiveSteps       json.RawMessage
 	CancelRequested bool
 	OverrideCourse  sql.NullString
 	OverrideUntil   sql.NullTime
@@ -117,12 +122,12 @@ func (s *service) GetPreset(userName string) (*Preset, error) {
 	err := s.conn.QueryRow(`
 		SELECT id, user_name, updated_at, course, cutoff, retry_interval, timeout, booking_open, ntfy_topic, enabled,
 		       last_run_status, last_run_message, last_run_at, cancel_requested,
-		       override_course, override_until, skip_next_run, alt_course_days
+		       override_course, override_until, skip_next_run, alt_course_days, live_steps
 		FROM booking_presets
 		WHERE user_name = $1`, userName).
 		Scan(&p.ID, &p.UserName, &p.UpdatedAt, &p.Course, &p.Cutoff, &p.RetryInterval, &p.Timeout, &p.BookingOpen, &p.NtfyTopic, &p.Enabled,
 			&p.LastRunStatus, &p.LastRunMessage, &p.LastRunAt, &p.CancelRequested,
-			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays)
+			&p.OverrideCourse, &p.OverrideUntil, &p.SkipNextRun, &p.AltCourseDays, &p.LiveSteps)
 	if errors.Is(err, sql.ErrNoRows) {
 		return nil, nil
 	}
@@ -165,6 +170,18 @@ func (s *service) UpdatePresetRunStatus(userName string, status RunStatus, messa
 		SET last_run_status = $2, last_run_message = $3, last_run_at = NOW()
 		WHERE user_name = $1`,
 		userName, status, message)
+	return err
+}
+
+func (s *service) ResetLiveSteps(userName string) error {
+	_, err := s.conn.Exec(`UPDATE booking_presets SET live_steps = '[]' WHERE user_name = $1`, userName)
+	return err
+}
+
+// AppendLiveSteps appends a JSON array of steps to the user's live run log.
+func (s *service) AppendLiveSteps(userName string, steps json.RawMessage) error {
+	_, err := s.conn.Exec(`UPDATE booking_presets SET live_steps = live_steps || $2::jsonb WHERE user_name = $1`,
+		userName, []byte(steps))
 	return err
 }
 

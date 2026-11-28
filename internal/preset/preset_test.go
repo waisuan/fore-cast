@@ -3,6 +3,7 @@ package preset_test
 import (
 	"context"
 	"database/sql"
+	"encoding/json"
 	"log"
 	"testing"
 	"time"
@@ -379,4 +380,25 @@ func TestDeleteByUserName(t *testing.T) {
 func TestServiceSuite(t *testing.T) {
 	t.Parallel()
 	suite.Run(t, new(ServiceSuite))
+}
+
+func (s *ServiceSuite) TestLiveSteps_ResetAndAppend() {
+	_, err := s.conn.Exec("INSERT INTO user_credentials (user_name, password_enc) VALUES ($1, $2)", "alice", "encrypted-pw")
+	s.Require().NoError(err)
+	s.Require().NoError(s.svc.UpsertPreset(preset.Preset{UserName: "alice", Cutoff: "8:15", RetryInterval: "1s", Timeout: "10m", BookingOpen: "21:59:00"}))
+
+	p, err := s.svc.GetPreset("alice")
+	s.Require().NoError(err)
+	s.Assert().JSONEq(`[]`, string(p.LiveSteps), "new presets start with no live steps")
+
+	s.Require().NoError(s.svc.AppendLiveSteps("alice", json.RawMessage(`[{"text":"a"}]`)))
+	s.Require().NoError(s.svc.AppendLiveSteps("alice", json.RawMessage(`[{"text":"b"},{"text":"c"}]`)))
+	p, err = s.svc.GetPreset("alice")
+	s.Require().NoError(err)
+	s.Assert().JSONEq(`[{"text":"a"},{"text":"b"},{"text":"c"}]`, string(p.LiveSteps))
+
+	s.Require().NoError(s.svc.ResetLiveSteps("alice"))
+	p, err = s.svc.GetPreset("alice")
+	s.Require().NoError(err)
+	s.Assert().JSONEq(`[]`, string(p.LiveSteps))
 }

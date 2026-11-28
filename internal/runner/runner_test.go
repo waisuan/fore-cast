@@ -717,7 +717,7 @@ func TestRun_StepsExplainTimeout(t *testing.T) {
 		texts = append(texts, s.Text)
 	}
 	assert.Equal(t, []string{
-		"PLC on 2026/03/04: 2 tee time(s) before your 8:15 AM cutoff.",
+		"PLC on Wed 4 Mar: 2 tee times before your 8:15 AM cutoff.",
 		"7:00 AM tee 1: This Flight Is Blocked",
 		"7:00 AM tee 1: booking failed: Tee Time was not reserve",
 		"7:08 AM tee 10: open.",
@@ -740,4 +740,33 @@ func TestStepLog_CapsAndKeepsSummary(t *testing.T) {
 	assert.Equal(t, "step 6", steps[2].Text)
 	assert.Equal(t, fmt.Sprintf("step %d", maxSteps+4), steps[maxSteps].Text)
 	assert.Equal(t, "Done.", steps[maxSteps+1].Text)
+}
+
+func TestRun_OnStepStreamsEveryStepWithCourse(t *testing.T) {
+	t.Parallel()
+	ctrl := gomock.NewController(t)
+	defer ctrl.Finish()
+
+	mock := booker.NewMockClientInterface(ctrl)
+	cfg := baseCfg("tok")
+	var live []Step
+	cfg.OnStep = func(s Step) { live = append(live, s) }
+
+	slots := []booker.TeeTimeSlot{
+		{CourseID: "PLC", TeeTime: "1899-12-30T07:00:00", Session: "1", TeeBox: booker.StringOrNumber("1")},
+	}
+	mock.EXPECT().GetTeeTimeSlots("tok", "PLC", "2026/03/04").Return(slots, nil)
+	mock.EXPECT().CheckTeeTimeStatus("tok", gomock.Any()).Return(&booker.CheckTeeTimeStatusResponse{Status: true}, nil)
+	mock.EXPECT().BookTeeTime("tok", gomock.Any(), false).Return(&booker.BookingResponse{
+		Status: true,
+		Result: []booker.BookingResultItem{{Status: true, BookingID: "B1"}},
+	}, nil)
+
+	result, err := Run(testCtx(t, defaultTestTimeout), cfg, mock)
+	require.NoError(t, err)
+	assert.Equal(t, result.Steps, live, "live steps match the stored log")
+	for _, s := range live {
+		assert.Equal(t, "PLC", s.Course)
+	}
+	assert.Equal(t, "Done: booked.", live[len(live)-1].Text)
 }

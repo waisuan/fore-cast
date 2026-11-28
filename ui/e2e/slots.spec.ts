@@ -31,6 +31,6 @@ test.describe('slots', () => {
 
     await page.getByRole('button', { name: /load slots/i }).click();
 
-    await expect(page.getByText(/\d+ slot\(s\)/)).toBeVisible({ timeout: 15_000 });
+    await expect(page.getByText(/\d+ tee times?$/)).toBeVisible({ timeout: 15_000 });
   });
 });

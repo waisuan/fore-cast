@@ -36,6 +36,7 @@ interface PresetPayload {
   override_until: string | null;
   skip_next_run: boolean;
   alt_course_days: string[];
+  live_steps?: { at: string; text: string; course?: string }[];
 }
 
 function basePayload(over: Partial<PresetPayload> = {}): PresetPayload {
@@ -216,5 +217,78 @@ describe('HomeContent upcoming banner — alt course sub-line', () => {
     expect(screen.queryByText(/\(override\)/i)).not.toBeInTheDocument();
     const alt = screen.getByText(/Also trying/i);
     expect(alt.textContent).toMatch(/BRC/);
+  });
+});
+
+describe('HomeContent last run and off state', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+  });
+
+  it('always shows the last run result with a link to its run log, even days later', async () => {
+    vi.mocked(api.get).mockResolvedValue(
+      basePayload({
+        last_run_status: 'failed',
+        last_run_message: '[PLC] no slot booked — last club reply: This Flight Is Blocked',
+        last_run_at: '2026-01-01T14:00:03Z',
+      }),
+    );
+    renderHome();
+
+    expect(await screen.findByRole('heading', { name: 'Last run booked nothing' })).toBeInTheDocument();
+    expect(screen.getByText(/last club reply: This Flight Is Blocked/)).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'All runs in History' })).toHaveAttribute('href', '/history');
+  });
+
+  it('prompts to set up auto-booking when it is off', async () => {
+    vi.mocked(api.get).mockResolvedValue(basePayload({ enabled: false }));
+    renderHome();
+
+    expect(await screen.findByText('Auto-booking is off.')).toBeInTheDocument();
+    expect(screen.getByRole('link', { name: 'Set up auto-booking' })).toHaveAttribute('href', '/settings');
+  });
+
+  it('shows the live run log while a run is in progress', async () => {
+    vi.mocked(api.get).mockResolvedValue(
+      basePayload({
+        last_run_status: 'running',
+        live_steps: [
+          { at: '2026-11-28T14:00:01Z', text: 'Logged in to the club.' },
+          { at: '2026-11-28T14:00:02Z', text: '7:37 AM tee 1: open.', course: 'PLC' },
+          { at: '2026-11-28T14:00:02Z', text: '7:37 AM tee 1: This Flight Is Blocked', course: 'BRC' },
+        ],
+      }),
+    );
+    renderHome();
+
+    const log = await screen.findByRole('list', { name: 'Live run log' });
+    expect(log).toHaveAttribute('aria-live', 'polite');
+    expect(screen.getByText('7:37 AM tee 1: open.')).toBeInTheDocument();
+    // Two courses ran together, so each line carries its course tag.
+    expect(screen.getByText('BRC')).toBeInTheDocument();
+  });
+
+  it('says Starting… before the first live step arrives', async () => {
+    vi.mocked(api.get).mockResolvedValue(basePayload({ last_run_status: 'running', live_steps: [] }));
+    renderHome();
+    expect(await screen.findByText('Starting…')).toBeInTheDocument();
+  });
+
+  it('keeps the finished run log on the last-run card, collapsed', async () => {
+    vi.mocked(api.get).mockResolvedValue(
+      basePayload({
+        last_run_status: 'success',
+        last_run_message: 'Booked 7:37 AM',
+        last_run_at: '2026-11-28T14:00:05Z',
+        live_steps: [
+          { at: '2026-11-28T14:00:01Z', text: 'Logged in to the club.' },
+          { at: '2026-11-28T14:00:05Z', text: 'Done: booked.', course: 'PLC' },
+        ],
+      }),
+    );
+    renderHome();
+
+    expect(await screen.findByText('What happened (2 steps)')).toBeInTheDocument();
+    expect(screen.getByText('Done: booked.').closest('details')).not.toHaveAttribute('open');
   });
 });
